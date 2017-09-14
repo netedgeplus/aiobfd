@@ -28,8 +28,8 @@ def parse_arguments():
 def run():
     """Run aiobfd"""
     args = parse_arguments()
-    app = aiobfd.Daemon(args.local, args.remote, args.family)
-    app.run()
+    control = aiobfd.Control(args.local, args.remote, args.family)
+    control.run()
 
 if __name__ == '__main__':
     run()
