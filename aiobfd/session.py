@@ -8,6 +8,10 @@ from .transport import Client
 SOURCE_PORT_MIN = 49152
 SOURCE_PORT_MAX = 65535
 CONTROL_PORT = 3784
+INIT_STATE = 0
+UP_STATE = 1
+DOWN_STATE = 2
+ADMIN_DOWN_STATE = 3
 
 
 class Session:
