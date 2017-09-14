@@ -1,6 +1,6 @@
 aiobfd: Asynchronous BFD Daemon
 =================
-Bidirectional Forwarding Detection Client/Server in Python, using [asyncio](https://www.python.org/dev/peps/pep-3156/).
+Bidirectional Forwarding Detection Daemon written in Python, using [asyncio](https://www.python.org/dev/peps/pep-3156/).
 
 Installation
 -----------------
@@ -10,11 +10,11 @@ Running the service
 -------------------
 Run aiobfd as following:
 ```
-./run 192.168.0.2 192.168.0.5
+./run.py 192.168.0.2 192.168.0.5
 ```
 For a full list of options, check:
 ```
-./run 192.168.0.2 192.168.0.5
+./run.py --help
 ```
 
 Questions & Answers
