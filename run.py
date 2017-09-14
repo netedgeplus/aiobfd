@@ -28,7 +28,7 @@ def parse_arguments():
 def run():
     """Run aiobfd"""
     args = parse_arguments()
-    control = aiobfd.Control(args.local, args.remote, args.family)
+    control = aiobfd.Control(args.local, [args.remote], args.family)
     control.run()
 
 if __name__ == '__main__':
