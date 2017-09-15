@@ -103,3 +103,10 @@ class Session:
             self.client.sendto(
                 self.encode_packet(), (self.remote, CONTROL_PORT))
             await asyncio.sleep(0.2)
+
+    def rx_packet(self, packet, first=False):
+        """Receive packet"""
+        if first:
+            print('First packet')
+        else:
+            print('Whaat ??')

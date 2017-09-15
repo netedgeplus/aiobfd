@@ -1,8 +1,10 @@
 """aiobfd: BFD Control process"""
 
 import asyncio
+import logging
 from .transport import Server
 from .session import Session
+from .packet import Packet
 
 CONTROL_PORT = 3784
 
@@ -28,8 +30,38 @@ class Control:
     async def rx_packets(self):
         """Process a received BFD Control packets"""
         while True:
-            message, source = await self.rx_queue.get()
-            print('Message is {} from {}'.format(message, source))
+            packet, source = await self.rx_queue.get()
+            asyncio.ensure_future(self.process_packet(packet, source))
+            self.rx_queue.task_done()
+
+    async def process_packet(self, data, source):
+        """Process a received packet"""
+        try:
+            packet = Packet(data, source)
+        except IOError as exc:
+            logging.debug('Dropping packet: %s', exc)
+            return
+
+        # If the Your Discriminator field is nonzero, it MUST be used to select
+        # the session with which this BFD packet is associated.  If no session
+        # is found, the packet MUST be discarded.
+        if packet.your_disc:
+            for session in self.sessions:
+                if session.local_discr == packet.your_disc:
+                    session.rx_packet(packet)
+                    break
+        else:
+            # If the Your Discriminator field is zero, the session MUST be
+            # selected based on some combination of other fields ...
+            for session in self.sessions:
+                if session.remote == packet.source:
+                    session.rx_packet(packet, True)
+                    break
+
+        # If a matching session is not found, a new session MAY be created,
+        # or the packet MAY be discarded.
+        logging.debug('Dropping packet from %s as it doesn\'t match any '
+                      'session.', packet.source)
 
     def run(self):
         """Main function"""

@@ -1,7 +1,7 @@
 """aiobfd: BFD IPv4/IPv6 transport"""
 
 import asyncio
-
+import logging
 
 class Client:
     """BFD Client for sourcing egress datagrams"""
@@ -13,16 +13,16 @@ class Client:
         """Socket setup correctly"""
         self.transport = transport
 
-    def datagram_received(self, data, addr):
+    @staticmethod
+    def datagram_received(_, addr):
         """Received a packet"""
-        pass
-        # TODO Logging, this should never happen
+        logging.error(('Unexpectedly received a packet on a BFD source port '
+                       'from %s on port %d'), addr[0], addr[1])
 
     @staticmethod
     def error_received(exc):
         """Error occurred"""
-        # TODO Logging
-        print('Error received:', exc)
+        logging.warning('Socket error received: %s', exc)
 
 
 class Server:
@@ -38,13 +38,9 @@ class Server:
 
     def datagram_received(self, data, addr):
         """Received a packet"""
-        message = data.decode()
-        asyncio.ensure_future(self.rx_queue.put((message, addr[0])))
-        # if source in self.peers.keys():
-        #    self.peers[source].sendto(data, (source, BFD_CONTROL_PORT))
+        asyncio.ensure_future(self.rx_queue.put((data, addr[0])))
 
     @staticmethod
     def error_received(exc):
         """Error occurred"""
-        # TODO Logging
-        print('Error received:', exc)
+        logging.warning('Socket error received: %s', exc)
