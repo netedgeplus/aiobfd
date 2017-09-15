@@ -104,9 +104,59 @@ class Session:
                 self.encode_packet(), (self.remote, CONTROL_PORT))
             await asyncio.sleep(0.2)
 
-    def rx_packet(self, packet, first=False):
+    def rx_packet(self, packet):
         """Receive packet"""
-        if first:
-            print('First packet')
+
+        # If the A bit is set and no authentication is in use (bfd.AuthType
+        # is zero), the packet MUST be discarded.
+        if packet.authentication_present and not self.auth_type:
+            raise IOError('Received packet with authentication while no '
+                          'authentication is configured locally.')
+
+        # If the A bit is clear and authentication is in use (bfd.AuthType
+        # is nonzero), the packet MUST be discarded.
+        if (not packet.authentication_present) and self.auth_type:
+            raise IOError('Received packet without authentication while '
+                          'authentication is configured locally.')
+
+        # If the A bit is set authenticate the packet under the rules of
+        # section 6.7.
+        # TODO: implement authentication
+        if packet.authentication_present:
+            pass
+
+        # Set bfd.RemoteDiscr to the value of My Discriminator.
+        self.remote_disc = packet.my_disc
+
+        # Set bfd.RemoteState to the value of the State (Sta) field.
+        self.remote_state = packet.state
+
+        # Set bfd.RemoteDemandMode to the value of the Demand (D) bit.
+        self.remote_demand_mode = packet.demand_mode
+
+        # Set bfd.RemoteMinRxInterval to the value of Required Min RX Interval.
+        self.remote_min_rx_interval = packet.required_min_rx_interval
+
+        # Python version of the FSM in section 6.8.6
+        if self.state == STATE_ADMIN_DOWN:
+            raise IOError('Received packet while in Admin Down state')
+        if packet.state == STATE_ADMIN_DOWN:
+            if self.state != STATE_DOWN:
+                self.local_diag = DIAG_NEIGHBOR_SIGNAL_DOWN
+                self.state = STATE_DOWN
         else:
-            print('Whaat ??')
+            if self.state == STATE_DOWN:
+                if packet.state == STATE_DOWN:
+                    self.state = STATE_INIT
+                elif packet.state == STATE_INIT:
+                    self.state = STATE_UP
+            elif self.state == STATE_INIT:
+                if packet.state in (STATE_INIT, STATE_UP):
+                    self.state = STATE_UP
+            else:
+                if packet.state == STATE_DOWN:
+                    self.local_diag = DIAG_NEIGHBOR_SIGNAL_DOWN
+                    self.state = STATE_DOWN
+
+        # TODO: Check to see if Demand mode should become active or not
+        # (section 6.8.6 end of paragraph)(see section 6.6).

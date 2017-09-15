@@ -55,13 +55,13 @@ class Control:
             # selected based on some combination of other fields ...
             for session in self.sessions:
                 if session.remote == packet.source:
-                    session.rx_packet(packet, True)
+                    session.rx_packet(packet)
                     break
 
         # If a matching session is not found, a new session MAY be created,
-        # or the packet MAY be discarded.
+        # or the packet MAY be discarded. Note: We discard for now.
         logging.debug('Dropping packet from %s as it doesn\'t match any '
-                      'session.', packet.source)
+                      'configured remote.', packet.source)
 
     def run(self):
         """Main function"""

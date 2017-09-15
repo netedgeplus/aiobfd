@@ -66,6 +66,11 @@ class Packet:
             self.required_min_rx_interval, self.required_min_echo_rx_interval \
             = packet.unpack(PACKET_FORMAT)
 
+        self.validate(packet.len)
+
+    def validate(self, packet_length):
+        """Validate received packet contents"""
+
         # If the version number is not correct (1), the packet MUST be
         # discarded.
         if self.version != 1:
@@ -82,7 +87,7 @@ class Packet:
 
         # If the Length field is greater than the payload of the encapsulating
         # protocol, the packet MUST be discarded.
-        if self.length > packet.len:
+        if self.length > packet_length:
             raise IOError('Packet length field larger than received data.')
 
         # If the Multipoint (M) bit is nonzero, the packet MUST be discarded.
