@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import socket
 from .transport import Server
 from .session import Session
 from .packet import Packet
@@ -12,14 +13,15 @@ CONTROL_PORT = 3784
 class Control:
     """BFD Control"""
 
-    def __init__(self, local, remotes, family):
+    def __init__(self, local, remotes, family=socket.AF_UNSPEC, passive=False):
         self.loop = asyncio.get_event_loop()
         self.rx_queue = asyncio.Queue()
 
         # Initialize client sessions
         self.sessions = list()
         for remote in remotes:
-            self.sessions.append(Session(local, remote, family))
+            self.sessions.append(
+                Session(local, remote, family=family, passive=passive))
 
         # Initialize server
         future = self.loop.create_datagram_endpoint(
@@ -39,7 +41,10 @@ class Control:
         try:
             packet = Packet(data, source)
         except IOError as exc:
-            logging.debug('Dropping packet: %s', exc)
+            logging.info('Dropping packet: %s', exc)
+            return
+        except RuntimeWarning:
+            logging.debug('Dropping packet while in Admin Down state')
             return
 
         # If the Your Discriminator field is nonzero, it MUST be used to select

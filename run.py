@@ -22,13 +22,16 @@ def parse_arguments():
                               dest='family', default=socket.AF_UNSPEC,
                               const=socket.AF_INET6,
                               help='Force IPv6 connectivity')
+    parser.add_argument('-p', '--passive', action='store_true',
+                        help='Take a passive role in session initialization')
     return parser.parse_args()
 
 
 def run():
     """Run aiobfd"""
     args = parse_arguments()
-    control = aiobfd.Control(args.local, [args.remote], args.family)
+    control = aiobfd.Control(args.local, [args.remote], args.family,
+                             args.passive)
     control.run()
 
 if __name__ == '__main__':

@@ -1,7 +1,6 @@
 """aiobfd: BFD Control Packet"""
 # pylint: disable=I0011,E0632,R0902
 
-
 import bitstring
 
 MIN_PACKET_SIZE = 24
@@ -47,7 +46,7 @@ PACKET_FORMAT = (
 )
 
 
-class Packet:
+class Packet:  # pylint: disable=I0011,R0903
     """A BFD Control Packet"""
 
     def __init__(self, data, source):
