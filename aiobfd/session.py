@@ -72,7 +72,8 @@ class Session:
         future = self.loop.create_datagram_endpoint(
             Client,
             local_addr=(self.local,
-                        random.randint(SOURCE_PORT_MIN, SOURCE_PORT_MAX)))
+                        random.randint(SOURCE_PORT_MIN, SOURCE_PORT_MAX)),
+            family=family)
         self.client, _ = self.loop.run_until_complete(future)
         asyncio.ensure_future(self.tx_packets())
 

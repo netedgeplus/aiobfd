@@ -26,7 +26,8 @@ class Control:
         # Initialize server
         future = self.loop.create_datagram_endpoint(
             lambda: Server(self.rx_queue),
-            local_addr=(local, CONTROL_PORT))
+            local_addr=(local, CONTROL_PORT),
+            family=family)
         self.server, _ = self.loop.run_until_complete(future)
 
     async def rx_packets(self):
