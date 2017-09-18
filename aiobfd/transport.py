@@ -2,6 +2,8 @@
 
 import asyncio
 import logging
+log = logging.getLogger(__name__)  # pylint: disable=I0011,C0103
+
 
 class Client:
     """BFD Client for sourcing egress datagrams"""
@@ -16,13 +18,13 @@ class Client:
     @staticmethod
     def datagram_received(_, addr):
         """Received a packet"""
-        logging.error(('Unexpectedly received a packet on a BFD source port '
-                       'from %s on port %d'), addr[0], addr[1])
+        log.info(('Unexpectedly received a packet on a BFD source port '
+                  'from %s on port %d'), addr[0], addr[1])
 
     @staticmethod
     def error_received(exc):
         """Error occurred"""
-        logging.warning('Socket error received: %s', exc)
+        log.error('Socket error received: %s', exc)
 
 
 class Server:
@@ -43,4 +45,4 @@ class Server:
     @staticmethod
     def error_received(exc):
         """Error occurred"""
-        logging.warning('Socket error received: %s', exc)
+        log.error('Socket error received: %s', exc)

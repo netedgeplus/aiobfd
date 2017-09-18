@@ -5,9 +5,11 @@ import asyncio
 import random
 import socket
 import time
+import logging
 import bitstring
 from .transport import Client
 from .packet import PACKET_FORMAT
+log = logging.getLogger(__name__)  # pylint: disable=I0011,C0103
 
 SOURCE_PORT_MIN = 49152
 SOURCE_PORT_MAX = 65535
@@ -78,12 +80,17 @@ class Session:
         self.async_detect_time = None
 
         # Create the local client and run it once to grab a port
+        log.debug('Setting up UDP client for %s:%s.', remote, CONTROL_PORT)
         future = self.loop.create_datagram_endpoint(
             Client,
             local_addr=(self.local,
                         random.randint(SOURCE_PORT_MIN, SOURCE_PORT_MAX)),
             family=family)
         self.client, _ = self.loop.run_until_complete(future)
+        log.info('Sourcing traffic for %s:%s from %s:%s.',
+                 remote, CONTROL_PORT,
+                 self.client.get_extra_info('sockname')[0],
+                 self.client.get_extra_info('sockname')[1])
 
         # Schedule the coroutines to transmit packets and detect failures
         asyncio.ensure_future(self.async_tx_packets())
@@ -147,6 +154,8 @@ class Session:
         """Transmit a single BFD packet to the remote peer"""
         self.client.sendto(
             self.encode_packet(poll, final), (self.remote, CONTROL_PORT))
+        log.debug('Transmitting BFD packet to %s:%s.',
+                  self.remote, CONTROL_PORT)
 
     async def async_tx_packets(self):
         """Asynchronously transmit control packet"""
@@ -198,7 +207,7 @@ class Session:
         # section 6.7.
         # TODO: implement authentication
         if packet.authentication_present:
-            pass
+            log.critical('Authenticated packet not supported!')
 
         # Set bfd.RemoteDiscr to the value of My Discriminator.
         self.remote_discr = packet.my_discr
@@ -223,26 +232,35 @@ class Session:
             max(self.required_min_rx_interval, packet.desired_min_tx_interval)
 
         # Implmenetation of the FSM in section 6.8.6
-        # TODO: log session state changes
         if self.state == STATE_ADMIN_DOWN:
             raise RuntimeWarning('Received packet while in Admin Down state')
         if packet.state == STATE_ADMIN_DOWN:
             if self.state != STATE_DOWN:
                 self.local_diag = DIAG_NEIGHBOR_SIGNAL_DOWN
                 self.state = STATE_DOWN
+                log.error('BFD remote %s signaled going ADMIN_DOWN.',
+                          self.remote)
         else:
             if self.state == STATE_DOWN:
                 if packet.state == STATE_DOWN:
                     self.state = STATE_INIT
+                    log.error('BFD session with %s going to INIT state.',
+                              self.remote)
                 elif packet.state == STATE_INIT:
                     self.state = STATE_UP
+                    log.error('BFD session with %s going to UP state.',
+                              self.remote)
             elif self.state == STATE_INIT:
                 if packet.state in (STATE_INIT, STATE_UP):
                     self.state = STATE_UP
+                    log.error('BFD session with %s going to UP state.',
+                              self.remote)
             else:
                 if packet.state == STATE_DOWN:
                     self.local_diag = DIAG_NEIGHBOR_SIGNAL_DOWN
                     self.state = STATE_DOWN
+                    log.error('BFD remote %s signaled going DOWN.',
+                              self.remote)
 
         # TODO: Check to see if Demand mode should become active or not
         # (section 6.8.6 end of paragraph)(see section 6.6).
@@ -251,10 +269,14 @@ class Session:
         # the receiving system MUST transmit a BFD Control packet with the Poll
         #  (P) bit clear and the Final (F) bit set as soon as practicable, ...
         if packet.poll:
+            log.info('Received packet with Poll (P) bit set from %s, '
+                     'transmit packet with Final (F) bit set.', self.remote)
             self.tx_packet(final=True)
 
         # Set the time a packet was received to right now
         self.last_rx_packet_time = time.time()
+        log.debug('Valid packet received from %s, updating last packet time',
+                  self.remote)
 
     async def detect_async_failure(self):
         """Detect if a session has failed in asynchronous mode"""
@@ -270,6 +292,7 @@ class Session:
                      self.async_detect_time):
                     self.state = STATE_DOWN
                     self.local_diag = DIAG_CONTROL_DETECTION_EXPIRED
-                    # TODO: Logging, maybe die ?
+                    log.critical('Detected BFD remote %s going DOWN!',
+                                 self.remote)
             await asyncio.sleep(0.001)
     # TODO: implement demand mode, 6.8.4

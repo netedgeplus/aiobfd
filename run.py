@@ -4,6 +4,8 @@
 
 import argparse
 import socket
+import logging
+import sys
 import aiobfd
 
 
@@ -24,12 +26,22 @@ def parse_arguments():
                               help='Force IPv6 connectivity')
     parser.add_argument('-p', '--passive', action='store_true',
                         help='Take a passive role in session initialization')
+    log_group = parser.add_mutually_exclusive_group()
+    log_group.add_argument('-v', '--verbose', action='store_const',
+                           dest='loglevel', default=logging.WARNING,
+                           const=logging.INFO)
+    log_group.add_argument('-d', '--debug', action='store_const',
+                           dest='loglevel', default=logging.WARNING,
+                           const=logging.DEBUG)
     return parser.parse_args()
 
 
 def run():
     """Run aiobfd"""
     args = parse_arguments()
+    logging.basicConfig(stream=sys.stdout, level=args.loglevel,
+                        format='%(asctime)s %(name)-12s '
+                               '%(levelname)-8s %(message)s')
     control = aiobfd.Control(args.local, [args.remote], args.family,
                              args.passive)
     control.run()
