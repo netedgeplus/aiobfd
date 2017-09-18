@@ -4,6 +4,7 @@
 import asyncio
 import random
 import socket
+import time
 import bitstring
 from .transport import Client
 from .packet import PACKET_FORMAT
@@ -47,20 +48,22 @@ class Session:
     """BFD session with a remote"""
 
     def __init__(self, local, remote, family=socket.AF_UNSPEC, passive=False):
+        # Argument variables
         self.local = local
         self.remote = remote
         self.family = family
         self.passive = passive
         self.loop = asyncio.get_event_loop()
 
+        # As per 6.8.1. State Variables
         self.state = STATE_DOWN
         self.remote_state = STATE_DOWN
         self.local_discr = random.randint(0, 4294967295)  # 32-bit value
         self.remote_disc = 0
         self.local_diag = DIAG_NONE
-        self.desired_min_tx_interval = DESIRED_MIN_TX_INTERVAL
+        self._desired_min_tx_interval = DESIRED_MIN_TX_INTERVAL
         self.required_min_rx_interval = REQUIRED_MIN_RX_INTERVAL
-        self.remote_min_rx_interval = 1
+        self._remote_min_rx_interval = 1
         self.demand_mode = DEMAND_MODE
         self.remote_demand_mode = False
         self.detect_mult = DETECT_MULT
@@ -69,13 +72,47 @@ class Session:
         self.xmit_auth_seq = random.randint(0, 4294967295)  # 32-bit value
         self.auth_seq_known = False
 
+        # State Variables beyond those defined in RFC 5880
+        self.async_tx_interval = 1
+        self.last_rx_packet_time = None
+        self.async_detect_time = None
+
+        # Create the local client and run it once to grab a port
         future = self.loop.create_datagram_endpoint(
             Client,
             local_addr=(self.local,
                         random.randint(SOURCE_PORT_MIN, SOURCE_PORT_MAX)),
             family=family)
         self.client, _ = self.loop.run_until_complete(future)
-        asyncio.ensure_future(self.tx_packets())
+
+        # Schedule the coroutines to transmit packets and detect failures
+        asyncio.ensure_future(self.async_tx_packets())
+        asyncio.ensure_future(self.detect_async_failure())
+
+    # The transmit interval MUST be recalculated whenever
+    # bfd.DesiredMinTxInterval changes, or whenever bfd.RemoteMinRxInterval
+    # changes, and is equal to the greater of those two values.
+    @property
+    def desired_min_tx_interval(self):
+        """Property for desired_min_tx_interval so we can re-calculate
+            the async_tx_interval whenever this value changes"""
+        return self._desired_min_tx_interval
+
+    @desired_min_tx_interval.setter
+    def desired_min_tx_interval(self, value):
+        self._desired_min_tx_interval = value
+        self.async_tx_interval = max(value, self._remote_min_rx_interval)
+
+    @property
+    def remote_min_rx_interval(self):
+        """Property for remote_min_rx_interval so we can re-calculate
+            the async_tx_interval whenever this value changes"""
+        return self._remote_min_rx_interval
+
+    @remote_min_rx_interval.setter
+    def remote_min_rx_interval(self, value):
+        self._remote_min_rx_interval = value
+        self.async_tx_interval = max(value, self._desired_min_tx_interval)
 
     def encode_packet(self, poll=False, final=False):
         """Encode a single BFD Control packet"""
@@ -111,10 +148,9 @@ class Session:
         self.client.sendto(
             self.encode_packet(poll, final), (self.remote, CONTROL_PORT))
 
-    async def tx_packets(self):
-        """Temporary traffic source"""
+    async def async_tx_packets(self):
+        """Asynchronously transmit control packet"""
         while True:
-
             # A system MUST NOT transmit BFD Control packets if bfd.RemoteDiscr
             # is zero and the system is taking the Passive role.
             # A system MUST NOT periodically transmit BFD Control packets if
@@ -132,12 +168,6 @@ class Session:
                 print('Sending packet')
                 self.tx_packet()
 
-            # A system MUST NOT transmit BFD Control packets at an interval
-            # less than the larger of bfd.DesiredMinTxInterval and
-            # bfd.RemoteMinRxInterval less applied jitter (see below).
-            interval = max([self.desired_min_tx_interval,
-                            self.remote_min_rx_interval])
-
             # The periodic transmission of BFD Control packets MUST be jittered
             # on a per-packet basis by up to 25%
             # If bfd.DetectMult is equal to 1, the interval between transmitted
@@ -145,9 +175,10 @@ class Session:
             # transmission interval, and MUST be no less than 75% of the
             # negotiated transmission interval.
             if self.detect_mult == 1:
-                interval *= random.uniform(0.75, 0.90)
+                interval = self.async_tx_interval * random.uniform(0.75, 0.90)
             else:
-                interval *= (1 - random.uniform(0, 0.25))
+                interval = self.async_tx_interval * (1 -
+                                                     random.uniform(0, 0.25))
 
             print('Tx interval is {}'.format(interval))
             await asyncio.sleep(interval)
@@ -186,6 +217,16 @@ class Session:
         # Set bfd.RemoteMinRxInterval to the value of Required Min RX Interval.
         self.remote_min_rx_interval = packet.required_min_rx_interval
 
+        # In Asynchronous mode, the Detection Time calculated in the local
+        # system is equal to the value of Detect Mult received from the remote
+        # system, multiplied by the agreed transmit interval of the remote
+        # system (the greater of bfd.RequiredMinRxInterval and the last
+        # received Desired Min TX Interval).  The Detect Mult value is (roughly
+        # speaking, due to jitter) the number of packets that have to be missed
+        # in a row to declare the session to be down.
+        self.async_detect_time = packet.detect_mult * \
+            max(self.required_min_rx_interval, packet.desired_min_tx_interval)
+
         # Implmenetation of the FSM in section 6.8.6
         # TODO: log session state changes
         if self.state == STATE_ADMIN_DOWN:
@@ -217,4 +258,23 @@ class Session:
         if packet.poll:
             self.tx_packet(final=True)
 
-        # TODO: implement timer resets here and detect missing packet
+        # Set the time a packet was received to right now
+        self.last_rx_packet_time = time.time()
+
+    async def detect_async_failure(self):
+        """Detect if a session has failed in asynchronous mode"""
+        while True:
+            if not (self.demand_mode and self.async_detect_time):
+                # If Demand mode is not active, and a period of time equal to
+                # the Detection Time passes without receiving a BFD Control
+                # packet from the remote system, and bfd.SessionState is Init
+                # or Up, the session has gone down -- the local system MUST set
+                # bfd.SessionState to Down and bfd.LocalDiag to 1.
+                if self.state in (STATE_INIT, STATE_UP) and \
+                    ((time.time() - self.last_rx_packet_time) >
+                     self.async_detect_time):
+                    self.state = STATE_DOWN
+                    self.local_diag = DIAG_CONTROL_DETECTION_EXPIRED
+                    # TODO: Logging, maybe die ?
+            await asyncio.sleep(0.001)
+    # TODO: implement demand mode, 6.8.4
