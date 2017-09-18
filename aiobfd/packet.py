@@ -38,8 +38,8 @@ PACKET_FORMAT = (
     'bool=multipoint,'
     'uint:8=detect_mult,'
     'uint:8=length,'
-    'uint:32=my_disc,'
-    'uint:32=your_disc,'
+    'uint:32=my_discr,'
+    'uint:32=your_discr,'
     'uint:32=desired_min_tx_interval,'
     'uint:32=required_min_rx_interval,'
     'uint:32=required_min_echo_rx_interval'
@@ -61,7 +61,7 @@ class Packet:  # pylint: disable=I0011,R0903
         self.version, self.diag, self.state, self.poll, self.final, \
             self.control_plane_independent, self.authentication_present,\
             self.demand_mode, self.multipoint, self.detect_mult, self.length, \
-            self.my_disc, self.your_disc, self.desired_min_tx_interval, \
+            self.my_discr, self.your_discr, self.desired_min_tx_interval, \
             self.required_min_rx_interval, self.required_min_echo_rx_interval \
             = packet.unpack(PACKET_FORMAT)
 
@@ -94,11 +94,11 @@ class Packet:  # pylint: disable=I0011,R0903
             raise IOError('Multipoint bit should be 0.')
 
         # If the My Discriminator field is zero, the packet MUST be discarded.
-        if not self.my_disc:
+        if not self.my_discr:
             raise IOError('Discriminator field is zero.')
 
         # If the Your Discriminator field is zero and the State field is not
         # Down or AdminDown, the packet MUST be discarded.
         if self.state not in [STATE_DOWN, STATE_ADMIN_DOWN] \
-           and (not self.your_disc):
+           and (not self.your_discr):
             raise IOError('Your Discriminator can\'t be zero in this state.')

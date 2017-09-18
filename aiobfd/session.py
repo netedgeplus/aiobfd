@@ -59,7 +59,7 @@ class Session:
         self.state = STATE_DOWN
         self.remote_state = STATE_DOWN
         self.local_discr = random.randint(0, 4294967295)  # 32-bit value
-        self.remote_disc = 0
+        self.remote_discr = 0
         self.local_diag = DIAG_NONE
         self._desired_min_tx_interval = DESIRED_MIN_TX_INTERVAL
         self.required_min_rx_interval = REQUIRED_MIN_RX_INTERVAL
@@ -101,7 +101,7 @@ class Session:
     @desired_min_tx_interval.setter
     def desired_min_tx_interval(self, value):
         self._desired_min_tx_interval = value
-        self.async_tx_interval = max(value, self._remote_min_rx_interval)
+        self.async_tx_interval = max(value, self.remote_min_rx_interval)
 
     @property
     def remote_min_rx_interval(self):
@@ -112,7 +112,7 @@ class Session:
     @remote_min_rx_interval.setter
     def remote_min_rx_interval(self, value):
         self._remote_min_rx_interval = value
-        self.async_tx_interval = max(value, self._desired_min_tx_interval)
+        self.async_tx_interval = max(value, self.desired_min_tx_interval)
 
     def encode_packet(self, poll=False, final=False):
         """Encode a single BFD Control packet"""
@@ -134,8 +134,8 @@ class Session:
             'multipoint': MULTIPOINT,
             'detect_mult': self.detect_mult,
             'length': 24,  # TODO: revisit when implementing authentication
-            'my_disc': self.local_discr,
-            'your_disc': self.remote_disc,
+            'my_discr': self.local_discr,
+            'your_discr': self.remote_discr,
             'desired_min_tx_interval': self.desired_min_tx_interval,
             'required_min_rx_interval': self.required_min_rx_interval,
             'required_min_echo_rx_interval': REQUIRED_MIN_ECHO_RX_INTERVAL
@@ -160,12 +160,10 @@ class Session:
             # is 1, bfd.SessionState is Up, and bfd.RemoteSessionState is Up)
             # and a Poll Sequence is not being transmitted.
             # TODO:  6.8.7. ... and a Poll Sequence is not being transmitted.
-            print(self.passive)
-            if not((self.remote_disc == 0 and self.passive) or
+            if not((self.remote_discr == 0 and self.passive) or
                    (self.remote_min_rx_interval == 0) or
                    (self.remote_demand_mode == 1 and self.state == STATE_UP and
                     self.remote_state == STATE_UP)):
-                print('Sending packet')
                 self.tx_packet()
 
             # The periodic transmission of BFD Control packets MUST be jittered
@@ -179,10 +177,7 @@ class Session:
             else:
                 interval = self.async_tx_interval * (1 -
                                                      random.uniform(0, 0.25))
-
-            print('Tx interval is {}'.format(interval))
             await asyncio.sleep(interval)
-            # TODO: Implement 6.8.7.  Transmitting BFD Control Packets
 
     def rx_packet(self, packet):  # pylint: disable=I0011,R0912
         """Receive packet"""
@@ -206,7 +201,7 @@ class Session:
             pass
 
         # Set bfd.RemoteDiscr to the value of My Discriminator.
-        self.remote_disc = packet.my_disc
+        self.remote_discr = packet.my_discr
 
         # Set bfd.RemoteState to the value of the State (Sta) field.
         self.remote_state = packet.state

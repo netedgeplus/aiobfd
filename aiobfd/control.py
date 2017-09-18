@@ -51,9 +51,9 @@ class Control:
         # If the Your Discriminator field is nonzero, it MUST be used to select
         # the session with which this BFD packet is associated.  If no session
         # is found, the packet MUST be discarded.
-        if packet.your_disc:
+        if packet.your_discr:
             for session in self.sessions:
-                if session.local_discr == packet.your_disc:
+                if session.local_discr == packet.your_discr:
                     session.rx_packet(packet)
                     break
         else:
