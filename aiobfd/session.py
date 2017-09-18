@@ -1,5 +1,5 @@
 """aiobfd: BFD Session with an individual remote"""
-# pylint: disable=I0011,R0902
+# pylint: disable=I0011,R0902,R0913
 
 import asyncio
 import random
@@ -32,12 +32,10 @@ STATE_DOWN = 1                      # Down
 STATE_INIT = 2                      # Init
 STATE_UP = 3                        # Up
 
-CONTROL_PLANE_INDEPENDENT = False  # Control Plane Independent
+CONTROL_PLANE_INDEPENDENT = False   # Control Plane Independent
 
 # Default timers
-DESIRED_MIN_TX_INTERVAL = 1         # Minimum initial value
-REQUIRED_MIN_RX_INTERVAL = 1        # TODO: parameterize
-DETECT_MULT = 3                     # TODO: paramiterize
+DESIRED_MIN_TX_INTERVAL = 1000000   # Minimum initial value
 
 # Keep these fields statically disabled as they're not implemented
 AUTH_TYPE = None                    # Authentication disabled
@@ -49,13 +47,16 @@ REQUIRED_MIN_ECHO_RX_INTERVAL = 0   # Do not support echo packet
 class Session:
     """BFD session with a remote"""
 
-    def __init__(self, local, remote, family=socket.AF_UNSPEC, passive=False):
+    def __init__(self, local, remote, family=socket.AF_UNSPEC, passive=False,
+                 tx_interval=1000000, rx_interval=1000000, detect_mult=3):
         # Argument variables
         self.local = local
         self.remote = remote
         self.family = family
         self.passive = passive
         self.loop = asyncio.get_event_loop()
+        self.rx_interval = rx_interval  # User selectable value
+        self.tx_interval = tx_interval  # User selectable value
 
         # As per 6.8.1. State Variables
         self.state = STATE_DOWN
@@ -64,18 +65,18 @@ class Session:
         self.remote_discr = 0
         self.local_diag = DIAG_NONE
         self._desired_min_tx_interval = DESIRED_MIN_TX_INTERVAL
-        self.required_min_rx_interval = REQUIRED_MIN_RX_INTERVAL
+        self.required_min_rx_interval = rx_interval
         self._remote_min_rx_interval = 1
         self.demand_mode = DEMAND_MODE
         self.remote_demand_mode = False
-        self.detect_mult = DETECT_MULT
+        self.detect_mult = detect_mult
         self.auth_type = AUTH_TYPE
         self.rcv_auth_seq = 0
         self.xmit_auth_seq = random.randint(0, 4294967295)  # 32-bit value
         self.auth_seq_known = False
 
         # State Variables beyond those defined in RFC 5880
-        self.async_tx_interval = 1
+        self.async_tx_interval = 1000000
         self.last_rx_packet_time = None
         self.async_detect_time = None
 
@@ -186,7 +187,7 @@ class Session:
             else:
                 interval = self.async_tx_interval * (1 -
                                                      random.uniform(0, 0.25))
-            await asyncio.sleep(interval)
+            await asyncio.sleep(interval/1000000)
 
     def rx_packet(self, packet):  # pylint: disable=I0011,R0912
         """Receive packet"""
@@ -238,6 +239,7 @@ class Session:
             if self.state != STATE_DOWN:
                 self.local_diag = DIAG_NEIGHBOR_SIGNAL_DOWN
                 self.state = STATE_DOWN
+                self.desired_min_tx_interval = DESIRED_MIN_TX_INTERVAL
                 log.error('BFD remote %s signaled going ADMIN_DOWN.',
                           self.remote)
         else:
@@ -248,11 +250,13 @@ class Session:
                               self.remote)
                 elif packet.state == STATE_INIT:
                     self.state = STATE_UP
+                    self.desired_min_tx_interval = self.rx_interval
                     log.error('BFD session with %s going to UP state.',
                               self.remote)
             elif self.state == STATE_INIT:
                 if packet.state in (STATE_INIT, STATE_UP):
                     self.state = STATE_UP
+                    self.desired_min_tx_interval = self.rx_interval
                     log.error('BFD session with %s going to UP state.',
                               self.remote)
             else:
@@ -275,7 +279,7 @@ class Session:
 
         # Set the time a packet was received to right now
         self.last_rx_packet_time = time.time()
-        log.debug('Valid packet received from %s, updating last packet time',
+        log.debug('Valid packet received from %s, updating last packet time.',
                   self.remote)
 
     async def detect_async_failure(self):
@@ -289,10 +293,11 @@ class Session:
                 # bfd.SessionState to Down and bfd.LocalDiag to 1.
                 if self.state in (STATE_INIT, STATE_UP) and \
                     ((time.time() - self.last_rx_packet_time) >
-                     self.async_detect_time):
+                     (self.async_detect_time/1000000)):
                     self.state = STATE_DOWN
                     self.local_diag = DIAG_CONTROL_DETECTION_EXPIRED
+                    self.desired_min_tx_interval = DESIRED_MIN_TX_INTERVAL
                     log.critical('Detected BFD remote %s going DOWN!',
                                  self.remote)
-            await asyncio.sleep(0.001)
+            await asyncio.sleep(1/1000)
     # TODO: implement demand mode, 6.8.4

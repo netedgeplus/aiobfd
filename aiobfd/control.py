@@ -1,4 +1,5 @@
 """aiobfd: BFD Control process"""
+# pylint: disable=I0011,R0913
 
 import asyncio
 import logging
@@ -14,7 +15,8 @@ CONTROL_PORT = 3784
 class Control:
     """BFD Control"""
 
-    def __init__(self, local, remotes, family=socket.AF_UNSPEC, passive=False):
+    def __init__(self, local, remotes, family=socket.AF_UNSPEC, passive=False,
+                 tx_interval=1000000, rx_interval=1000000, detect_mult=3):
         self.loop = asyncio.get_event_loop()
         self.rx_queue = asyncio.Queue()
 
@@ -23,7 +25,9 @@ class Control:
         for remote in remotes:
             log.debug('Creating BFD session for remote %s.', remote)
             self.sessions.append(
-                Session(local, remote, family=family, passive=passive))
+                Session(local, remote, family=family, passive=passive,
+                        tx_interval=tx_interval, rx_interval=rx_interval,
+                        detect_mult=detect_mult))
 
         # Initialize server
         log.debug('Setting up UDP server on %s:%s.', local, CONTROL_PORT)

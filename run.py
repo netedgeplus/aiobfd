@@ -24,6 +24,12 @@ def parse_arguments():
                               dest='family', default=socket.AF_UNSPEC,
                               const=socket.AF_INET6,
                               help='Force IPv6 connectivity')
+    parser.add_argument('-r', '--rx-interval', default=1000, type=int,
+                        help='Required minimum Rx interval (ms)')
+    parser.add_argument('-t', '--tx-interval', default=1000, type=int,
+                        help='Desired minimum Tx interval (ms)')
+    parser.add_argument('-m', '--detect-mult', default=1, type=int,
+                        help='Detection multiplier')
     parser.add_argument('-p', '--passive', action='store_true',
                         help='Take a passive role in session initialization')
     log_group = parser.add_mutually_exclusive_group()
@@ -42,8 +48,11 @@ def run():
     logging.basicConfig(stream=sys.stdout, level=args.loglevel,
                         format='%(asctime)s %(name)-12s '
                                '%(levelname)-8s %(message)s')
-    control = aiobfd.Control(args.local, [args.remote], args.family,
-                             args.passive)
+    control = aiobfd.Control(args.local, [args.remote], family=args.family,
+                             passive=args.passive,
+                             rx_interval=args.rx_interval*1000,
+                             tx_interval=args.tx_interval*1000,
+                             detect_mult=args.detect_mult)
     control.run()
 
 if __name__ == '__main__':
