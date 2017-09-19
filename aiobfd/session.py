@@ -79,6 +79,7 @@ class Session:
         self.async_tx_interval = 1000000
         self.last_rx_packet_time = None
         self.async_detect_time = None
+        self.poll_sequence = False
 
         # Create the local client and run it once to grab a port
         log.debug('Setting up UDP client for %s:%s.', remote, CONTROL_PORT)
@@ -122,13 +123,18 @@ class Session:
         self._remote_min_rx_interval = value
         self.async_tx_interval = max(value, self.desired_min_tx_interval)
 
-    def encode_packet(self, poll=False, final=False):
+    def encode_packet(self, final=False):
         """Encode a single BFD Control packet"""
 
         # A system MUST NOT set the Demand (D) bit unless bfd.DemandMode is 1,
         # bfd.SessionState is Up, and bfd.RemoteSessionState is Up.
-        demand_bit = (self.demand_mode and self.state == STATE_UP and
-                      self.remote_state == STATE_UP)
+        demand = (self.demand_mode and self.state == STATE_UP and
+                  self.remote_state == STATE_UP)
+
+        # A BFD Control packet MUST NOT have both the Poll (P) and Final (F)
+        # bits set. We'll give the F bit priority, the P bit will still be set
+        # in the next outgoing packet if needed.
+        poll = self.poll_sequence if not final else False
 
         data = {
             'version': VERSION,
@@ -138,7 +144,7 @@ class Session:
             'final': final,
             'control_plane_independent': CONTROL_PLANE_INDEPENDENT,
             'authentication_present': bool(self.auth_type),
-            'demand_mode': demand_bit,
+            'demand_mode': demand,
             'multipoint': MULTIPOINT,
             'detect_mult': self.detect_mult,
             'length': 24,  # TODO: revisit when implementing authentication
@@ -151,10 +157,10 @@ class Session:
 
         return bitstring.pack(PACKET_FORMAT, **data).bytes
 
-    def tx_packet(self, poll=False, final=False):
+    def tx_packet(self, final=False):
         """Transmit a single BFD packet to the remote peer"""
         self.client.sendto(
-            self.encode_packet(poll, final), (self.remote, CONTROL_PORT))
+            self.encode_packet(final), (self.remote, CONTROL_PORT))
         log.debug('Transmitting BFD packet to %s:%s.',
                   self.remote, CONTROL_PORT)
 
@@ -169,11 +175,12 @@ class Session:
             # Demand mode is active on the remote system (bfd.RemoteDemandMode
             # is 1, bfd.SessionState is Up, and bfd.RemoteSessionState is Up)
             # and a Poll Sequence is not being transmitted.
-            # TODO:  6.8.7. ... and a Poll Sequence is not being transmitted.
             if not((self.remote_discr == 0 and self.passive) or
                    (self.remote_min_rx_interval == 0) or
-                   (self.remote_demand_mode == 1 and self.state == STATE_UP and
-                    self.remote_state == STATE_UP)):
+                   (not self.poll_sequence and
+                    (self.remote_demand_mode == 1 and
+                     self.state == STATE_UP and
+                     self.remote_state == STATE_UP))):
                 self.tx_packet()
 
             # The periodic transmission of BFD Control packets MUST be jittered
@@ -272,8 +279,15 @@ class Session:
         #  (P) bit clear and the Final (F) bit set as soon as practicable, ...
         if packet.poll:
             log.info('Received packet with Poll (P) bit set from %s, '
-                     'transmit packet with Final (F) bit set.', self.remote)
+                     'sending packet with Final (F) bit set.', self.remote)
             self.tx_packet(final=True)
+
+        # When the system sending the Poll sequence receives a packet with
+        # Final, the Poll Sequence is terminated
+        if packet.final:
+            log.info('Received packet with Final (F) bit set from %s, '
+                     'ending Poll Sequence.')
+            self.poll_sequence = False
 
         # Set the time a packet was received to right now
         self.last_rx_packet_time = time.time()
