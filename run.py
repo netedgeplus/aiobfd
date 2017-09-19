@@ -35,10 +35,10 @@ def parse_arguments():
     log_group = parser.add_mutually_exclusive_group()
     log_group.add_argument('-v', '--verbose', action='store_const',
                            dest='loglevel', default=logging.WARNING,
-                           const=logging.INFO)
+                           const=logging.INFO, help='Verbose logging')
     log_group.add_argument('-d', '--debug', action='store_const',
                            dest='loglevel', default=logging.WARNING,
-                           const=logging.DEBUG)
+                           const=logging.DEBUG, help='Debugging logging')
     return parser.parse_args()
 
 
