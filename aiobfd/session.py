@@ -65,7 +65,7 @@ class Session:
         self.remote_discr = 0
         self.local_diag = DIAG_NONE
         self._desired_min_tx_interval = DESIRED_MIN_TX_INTERVAL
-        self.required_min_rx_interval = rx_interval
+        self._required_min_rx_interval = rx_interval
         self._remote_min_rx_interval = 1
         self.demand_mode = DEMAND_MODE
         self.remote_demand_mode = False
@@ -101,16 +101,31 @@ class Session:
     # The transmit interval MUST be recalculated whenever
     # bfd.DesiredMinTxInterval changes, or whenever bfd.RemoteMinRxInterval
     # changes, and is equal to the greater of those two values.
+    # If either bfd.DesiredMinTxInterval is changed or
+    # bfd.RequiredMinRxInterval is changed, a Poll Sequence MUST be
+    # initiated (see section 6.5)
     @property
     def desired_min_tx_interval(self):
-        """Property for desired_min_tx_interval so we can re-calculate
-            the async_tx_interval whenever this value changes"""
+        """bfd.DesiredMinTxInterval"""
         return self._desired_min_tx_interval
 
     @desired_min_tx_interval.setter
     def desired_min_tx_interval(self, value):
         self._desired_min_tx_interval = value
         self.async_tx_interval = max(value, self.remote_min_rx_interval)
+        self.poll_sequence = True
+        log.info('bfd.DesiredMinTxInterval changed, starting Poll Sequence.')
+
+    @property
+    def required_min_rx_interval(self):
+        """bfd.RequiredMinRxInterval"""
+        return self._required_min_rx_interval
+
+    @required_min_rx_interval.setter
+    def required_min_rx_interval(self, value):
+        self._required_min_rx_interval = value
+        self.poll_sequence = True
+        log.info('bfd.RequiredMinRxInterval changed, starting Poll Sequence.')
 
     @property
     def remote_min_rx_interval(self):
@@ -155,6 +170,8 @@ class Session:
             'required_min_echo_rx_interval': REQUIRED_MIN_ECHO_RX_INTERVAL
         }
 
+        log.debug('Encoding packet: diag: %d, state: %d, poll: %d, final: %d',
+                  self.local_diag, self.state, poll, final)
         return bitstring.pack(PACKET_FORMAT, **data).bytes
 
     def tx_packet(self, final=False):
@@ -286,7 +303,7 @@ class Session:
         # Final, the Poll Sequence is terminated
         if packet.final:
             log.info('Received packet with Final (F) bit set from %s, '
-                     'ending Poll Sequence.')
+                     'ending Poll Sequence.', self.remote)
             self.poll_sequence = False
 
         # Set the time a packet was received to right now
