@@ -209,6 +209,7 @@ class Session:
         # TODO: implement authentication
         if packet.authentication_present:
             log.critical('Authenticated packet not supported!')
+            return
 
         # Set bfd.RemoteDiscr to the value of My Discriminator.
         self.remote_discr = packet.my_discr
@@ -234,7 +235,7 @@ class Session:
 
         # Implmenetation of the FSM in section 6.8.6
         if self.state == STATE_ADMIN_DOWN:
-            raise RuntimeWarning('Received packet while in Admin Down state')
+            raise AttributeError('Received packet while in Admin Down state')
         if packet.state == STATE_ADMIN_DOWN:
             if self.state != STATE_DOWN:
                 self.local_diag = DIAG_NEIGHBOR_SIGNAL_DOWN
@@ -265,9 +266,6 @@ class Session:
                     self.state = STATE_DOWN
                     log.error('BFD remote %s signaled going DOWN.',
                               self.remote)
-
-        # TODO: Check to see if Demand mode should become active or not
-        # (section 6.8.6 end of paragraph)(see section 6.6).
 
         # If a BFD Control packet is received with the Poll (P) bit set to 1,
         # the receiving system MUST transmit a BFD Control packet with the Poll
@@ -300,4 +298,3 @@ class Session:
                     log.critical('Detected BFD remote %s going DOWN!',
                                  self.remote)
             await asyncio.sleep(1/1000)
-    # TODO: implement demand mode, 6.8.4

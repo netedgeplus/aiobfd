@@ -56,9 +56,8 @@ class Control:
         except IOError as exc:
             log.info('Dropping packet: %s', exc)
             return
-        except RuntimeWarning:
+        except AttributeError:
             log.info('Dropping packet while in Admin Down state.')
-            # TODO: Shouldn't we accept packets in a poll sequence ?
             return
 
         # If the Your Discriminator field is nonzero, it MUST be used to select
