@@ -76,9 +76,10 @@ class Session:
         self.auth_seq_known = False
 
         # State Variables beyond those defined in RFC 5880
-        self.async_tx_interval = 1000000
+        self._async_tx_interval = 1000000
+        self._final_async_tx_interval = None  # Used to delay timer changes
         self.last_rx_packet_time = None
-        self.async_detect_time = None
+        self._async_detect_time = None
         self.poll_sequence = False
 
         # Create the local client and run it once to grab a port
@@ -111,10 +112,21 @@ class Session:
 
     @desired_min_tx_interval.setter
     def desired_min_tx_interval(self, value):
+        log.info('bfd.DesiredMinTxInterval changed from %d to %d, starting '
+                 'Poll Sequence.', self._desired_min_tx_interval, value)
+
+        # If bfd.DesiredMinTxInterval is increased and bfd.SessionState is Up,
+        # the actual transmission interval used MUST NOT change until the Poll
+        # Sequence described above has terminated.
+        tx_interval = max(value, self.remote_min_rx_interval)
+        if value > self._desired_min_tx_interval and self.state == STATE_UP:
+            self._final_async_tx_interval = tx_interval
+            log.info('Delaying increase in Tx Interval from %d to %d ...',
+                     self._async_tx_interval, self._final_async_tx_interval)
+        else:
+            self._async_tx_interval = tx_interval
         self._desired_min_tx_interval = value
-        self.async_tx_interval = max(value, self.remote_min_rx_interval)
         self.poll_sequence = True
-        log.info('bfd.DesiredMinTxInterval changed, starting Poll Sequence.')
 
     @property
     def required_min_rx_interval(self):
@@ -123,9 +135,10 @@ class Session:
 
     @required_min_rx_interval.setter
     def required_min_rx_interval(self, value):
+        log.info('bfd.RequiredMinRxInterval changed from %d to %d, starting '
+                 'Poll Sequence.', self._required_min_rx_interval, value)
         self._required_min_rx_interval = value
         self.poll_sequence = True
-        log.info('bfd.RequiredMinRxInterval changed, starting Poll Sequence.')
 
     @property
     def remote_min_rx_interval(self):
@@ -135,8 +148,9 @@ class Session:
 
     @remote_min_rx_interval.setter
     def remote_min_rx_interval(self, value):
-        self._remote_min_rx_interval = value
-        self.async_tx_interval = max(value, self.desired_min_tx_interval)
+        if value != self._remote_min_rx_interval:
+            self._async_tx_interval = max(value, self.desired_min_tx_interval)
+            self._remote_min_rx_interval = value
 
     def encode_packet(self, final=False):
         """Encode a single BFD Control packet"""
@@ -207,10 +221,10 @@ class Session:
             # transmission interval, and MUST be no less than 75% of the
             # negotiated transmission interval.
             if self.detect_mult == 1:
-                interval = self.async_tx_interval * random.uniform(0.75, 0.90)
+                interval = self._async_tx_interval * random.uniform(0.75, 0.90)
             else:
-                interval = self.async_tx_interval * (1 -
-                                                     random.uniform(0, 0.25))
+                interval = self._async_tx_interval * (1 -
+                                                      random.uniform(0, 0.25))
             await asyncio.sleep(interval/1000000)
 
     def rx_packet(self, packet):  # pylint: disable=I0011,R0912
@@ -251,10 +265,8 @@ class Session:
         # system is equal to the value of Detect Mult received from the remote
         # system, multiplied by the agreed transmit interval of the remote
         # system (the greater of bfd.RequiredMinRxInterval and the last
-        # received Desired Min TX Interval).  The Detect Mult value is (roughly
-        # speaking, due to jitter) the number of packets that have to be missed
-        # in a row to declare the session to be down.
-        self.async_detect_time = packet.detect_mult * \
+        # received Desired Min TX Interval).
+        self._async_detect_time = packet.detect_mult * \
             max(self.required_min_rx_interval, packet.desired_min_tx_interval)
 
         # Implmenetation of the FSM in section 6.8.6
@@ -305,6 +317,12 @@ class Session:
             log.info('Received packet with Final (F) bit set from %s, '
                      'ending Poll Sequence.', self.remote)
             self.poll_sequence = False
+            if self._final_async_tx_interval:
+                log.info('Increasing Tx Interval from %d to %d now that Poll '
+                         'Sequence has ended.', self._async_tx_interval,
+                         self._final_async_tx_interval)
+                self._async_tx_interval = self._final_async_tx_interval
+                self._final_async_tx_interval = None
 
         # Set the time a packet was received to right now
         self.last_rx_packet_time = time.time()
@@ -314,7 +332,7 @@ class Session:
     async def detect_async_failure(self):
         """Detect if a session has failed in asynchronous mode"""
         while True:
-            if not (self.demand_mode and self.async_detect_time):
+            if not (self.demand_mode and self._async_detect_time):
                 # If Demand mode is not active, and a period of time equal to
                 # the Detection Time passes without receiving a BFD Control
                 # packet from the remote system, and bfd.SessionState is Init
@@ -322,7 +340,7 @@ class Session:
                 # bfd.SessionState to Down and bfd.LocalDiag to 1.
                 if self.state in (STATE_INIT, STATE_UP) and \
                     ((time.time() - self.last_rx_packet_time) >
-                     (self.async_detect_time/1000000)):
+                     (self._async_detect_time/1000000)):
                     self.state = STATE_DOWN
                     self.local_diag = DIAG_CONTROL_DETECTION_EXPIRED
                     self.desired_min_tx_interval = DESIRED_MIN_TX_INTERVAL
