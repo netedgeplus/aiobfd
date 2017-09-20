@@ -88,11 +88,17 @@ class Session:
 
         # Create the local client and run it once to grab a port
         log.debug('Setting up UDP client for %s:%s.', remote, CONTROL_PORT)
-        future = self.loop.create_datagram_endpoint(
-            Client,
-            local_addr=(self.local,
-                        random.randint(SOURCE_PORT_MIN, SOURCE_PORT_MAX)),
-            family=family)
+        src_port = random.randint(SOURCE_PORT_MIN, SOURCE_PORT_MAX)
+        fam, _, _, _, addr = socket.getaddrinfo(self.local, src_port)[0]
+        sock = socket.socket(family=fam, type=socket.SOCK_DGRAM)
+        if fam == socket.AF_INET:
+            sock.setsockopt(socket.SOL_IP, socket.IP_TTL, 255)
+        elif fam == socket.AF_INET6:
+            # Under Windows the IPv6 socket constant is somehow missing
+            # https://bugs.python.org/issue29515
+            sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_UNICAST_HOPS, 255)
+        sock.bind(addr)
+        future = self.loop.create_datagram_endpoint(Client, sock=sock)
         self.client, _ = self.loop.run_until_complete(future)
         log.info('Sourcing traffic for %s:%s from %s:%s.',
                  remote, CONTROL_PORT,
