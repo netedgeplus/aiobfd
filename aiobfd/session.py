@@ -8,7 +8,7 @@ import time
 import logging
 import bitstring
 from .transport import Client
-from .packet import PACKET_FORMAT
+from .packet import PACKET_FORMAT, PACKET_DEBUG_MSG
 log = logging.getLogger(__name__)  # pylint: disable=I0011,C0103
 
 SOURCE_PORT_MIN = 49152
@@ -174,10 +174,8 @@ class Session:
         # remote system is not in Demand mode, the local system MUST honor
         # the new interval immediately.
         # We should cancel the tx_packets coro to do this.
-        new_tx_interval = max(value, self.desired_min_tx_interval)
-        old_tx_interval = self._async_tx_interval
-        self._async_tx_interval = new_tx_interval
-        if new_tx_interval < old_tx_interval:
+        tx_interval = max(value, self.desired_min_tx_interval)
+        if tx_interval < self._async_tx_interval:
             log.info('Remote decreased the Tx Interval, forcing change '
                      'by restarting the Tx Packets process.')
             self._restart_tx_packets()
@@ -264,12 +262,17 @@ class Session:
             'required_min_echo_rx_interval': REQUIRED_MIN_ECHO_RX_INTERVAL
         }
 
-        log.debug('Encoding packet: diag: %d, state: %d, poll: %d, final: %d',
-                  self.local_diag, self.state, poll, final)
+        log.debug(PACKET_DEBUG_MSG, VERSION, self.local_diag, self.state,
+                  poll, final, CONTROL_PLANE_INDEPENDENT, bool(self.auth_type),
+                  demand, MULTIPOINT, self.detect_mult, 24, self.local_discr,
+                  self.remote_discr, self.desired_min_tx_interval,
+                  self.required_min_rx_interval, REQUIRED_MIN_ECHO_RX_INTERVAL)
+
         return bitstring.pack(PACKET_FORMAT, **data).bytes
 
     def tx_packet(self, final=False):
         """Transmit a single BFD packet to the remote peer"""
+        log.debug('Sending a packet to %s:%s', self.remote, CONTROL_PORT)
         self.client.sendto(
             self.encode_packet(final), (self.remote, CONTROL_PORT))
         log.debug('Transmitting BFD packet to %s:%s.',

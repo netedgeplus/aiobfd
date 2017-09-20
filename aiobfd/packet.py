@@ -1,7 +1,9 @@
 """aiobfd: BFD Control Packet"""
 # pylint: disable=I0011,E0632,R0902
 
+import logging
 import bitstring
+log = logging.getLogger(__name__)  # pylint: disable=I0011,C0103
 
 MIN_PACKET_SIZE = 24
 MIN_AUTH_PACKET_SIZE = 26
@@ -45,6 +47,13 @@ PACKET_FORMAT = (
     'uint:32=required_min_echo_rx_interval'
 )
 
+PACKET_DEBUG_MSG = '\n|--------------------------------------------------\n' \
+                   '| Vers: %d Diag: %d State: %d Poll: %d Final: %d\n' \
+                   '| CPI: %d Auth: %d Demand: %d Multi: %d DetectMult: %d\n' \
+                   '| Length: %d MyDisc: %d YourDisc: %d\n' \
+                   '| TxInterval: %d RxInterval: %d EchoRxInterval: %d\n' \
+                   '|--------------------------------------------------'
+
 
 class Packet:  # pylint: disable=I0011,R0903
     """A BFD Control Packet"""
@@ -64,6 +73,14 @@ class Packet:  # pylint: disable=I0011,R0903
             self.my_discr, self.your_discr, self.desired_min_tx_interval, \
             self.required_min_rx_interval, self.required_min_echo_rx_interval \
             = packet.unpack(PACKET_FORMAT)
+
+        log.debug(PACKET_DEBUG_MSG, self.version, self.diag, self.state,
+                  self.poll, self.final, self.control_plane_independent,
+                  self.authentication_present, self.demand_mode,
+                  self.multipoint, self.detect_mult, self.length,
+                  self.my_discr, self.your_discr, self.desired_min_tx_interval,
+                  self.required_min_rx_interval,
+                  self.required_min_echo_rx_interval)
 
         self.validate(packet.len)
 
