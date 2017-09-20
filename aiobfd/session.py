@@ -80,7 +80,11 @@ class Session:
         self._final_async_tx_interval = None  # Used to delay timer changes
         self.last_rx_packet_time = None
         self._async_detect_time = None
+        self._final_async_detect_time = None  # Used to delay timer changes
         self.poll_sequence = False
+        self._remote_detect_mult = None
+        self._remote_min_tx_interval = None
+        self._tx_packets = None
 
         # Create the local client and run it once to grab a port
         log.debug('Setting up UDP client for %s:%s.', remote, CONTROL_PORT)
@@ -96,7 +100,7 @@ class Session:
                  self.client.get_extra_info('sockname')[1])
 
         # Schedule the coroutines to transmit packets and detect failures
-        asyncio.ensure_future(self.async_tx_packets())
+        self._tx_packets = asyncio.ensure_future(self.async_tx_packets())
         asyncio.ensure_future(self.detect_async_failure())
 
     # The transmit interval MUST be recalculated whenever
@@ -112,6 +116,8 @@ class Session:
 
     @desired_min_tx_interval.setter
     def desired_min_tx_interval(self, value):
+        if value == self._desired_min_tx_interval:
+            return
         log.info('bfd.DesiredMinTxInterval changed from %d to %d, starting '
                  'Poll Sequence.', self._desired_min_tx_interval, value)
 
@@ -135,8 +141,20 @@ class Session:
 
     @required_min_rx_interval.setter
     def required_min_rx_interval(self, value):
+        if value == self._required_min_rx_interval:
+            return
         log.info('bfd.RequiredMinRxInterval changed from %d to %d, starting '
                  'Poll Sequence.', self._required_min_rx_interval, value)
+
+        detect_time = self.calc_detect_time(self.remote_detect_mult,
+                                            self.required_min_rx_interval,
+                                            self.remote_min_tx_interval)
+        if value < self._required_min_rx_interval and self.state == STATE_UP:
+            self._final_async_detect_time = detect_time
+            log.info('Delaying increase in Detect Time from %d to %d ...',
+                     self._async_detect_time, self._final_async_detect_time)
+        else:
+            self._async_detect_time = detect_time
         self._required_min_rx_interval = value
         self.poll_sequence = True
 
@@ -148,9 +166,71 @@ class Session:
 
     @remote_min_rx_interval.setter
     def remote_min_rx_interval(self, value):
-        if value != self._remote_min_rx_interval:
-            self._async_tx_interval = max(value, self.desired_min_tx_interval)
-            self._remote_min_rx_interval = value
+        if value == self._remote_min_rx_interval:
+            return
+        # If the local system reduces its transmit interval due to
+        # bfd.RemoteMinRxInterval being reduced (the remote system has
+        # advertised a reduced value in Required Min RX Interval), and the
+        # remote system is not in Demand mode, the local system MUST honor
+        # the new interval immediately.
+        # We should cancel the tx_packets coro to do this.
+        new_tx_interval = max(value, self.desired_min_tx_interval)
+        old_tx_interval = self._async_tx_interval
+        self._async_tx_interval = new_tx_interval
+        if new_tx_interval < old_tx_interval:
+            log.info('Remote decreased the Tx Interval, forcing change '
+                     'by restarting the Tx Packets process.')
+            self._restart_tx_packets()
+        self._remote_min_rx_interval = value
+
+    @property
+    def remote_min_tx_interval(self):
+        """Property for remote_min_tx_interval so we can re-calculate
+            the detect_time whenever this value changes"""
+        return self._remote_min_tx_interval
+
+    @remote_min_tx_interval.setter
+    def remote_min_tx_interval(self, value):
+        if value == self._remote_min_tx_interval:
+            return
+        self._async_detect_time = \
+            self.calc_detect_time(self.remote_detect_mult,
+                                  self.required_min_rx_interval, value)
+        self._remote_min_tx_interval = value
+
+    @property
+    def remote_detect_mult(self):
+        """Property for remote_detect_mult so we can re-calculate
+            the detect_time whenever this value changes"""
+        return self._remote_detect_mult
+
+    @remote_detect_mult.setter
+    def remote_detect_mult(self, value):
+        if value == self._remote_detect_mult:
+            return
+        self._async_detect_time = \
+            self.calc_detect_time(value, self.required_min_rx_interval,
+                                  self.remote_min_tx_interval)
+        self._remote_detect_mult = value
+
+    @staticmethod
+    def calc_detect_time(detect_mult, rx_interval, tx_interval):
+        """Calculate the BFD Detection Time"""
+
+        # In Asynchronous mode, the Detection Time calculated in the local
+        # system is equal to the value of Detect Mult received from the remote
+        # system, multiplied by the agreed transmit interval of the remote
+        # system (the greater of bfd.RequiredMinRxInterval and the last
+        # received Desired Min TX Interval).
+        if not (detect_mult and rx_interval and tx_interval):
+            log.debug('BFD Detection Time calculation not possible with '
+                      'values detect_mult: %s rx_interval: %s tx_interval: %s',
+                      detect_mult, rx_interval, tx_interval)
+            return None
+        log.debug('BFD Detection Time calculated using '
+                  'detect_mult: %s rx_interval: %s tx_interval: %s',
+                  detect_mult, rx_interval, tx_interval)
+        return detect_mult * max(rx_interval, tx_interval)
 
     def encode_packet(self, final=False):
         """Encode a single BFD Control packet"""
@@ -227,7 +307,20 @@ class Session:
                                                       random.uniform(0, 0.25))
             await asyncio.sleep(interval/1000000)
 
-    def rx_packet(self, packet):  # pylint: disable=I0011,R0912
+    def _restart_tx_packets(self):
+        """Allow other co-routines to request a restart of tx_packets()
+           when needed, i.e. due to a timer change"""
+
+        try:
+            log.info('Attempting to cancel tx_packets() ...')
+            self._tx_packets.cancel()
+        except asyncio.CancelledError:
+            pass
+
+        log.info('tx_packets() cancelled, restarting ...')
+        self._tx_packets = asyncio.ensure_future(self.async_tx_packets())
+
+    def rx_packet(self, packet):  # pylint: disable=I0011,R0912,R0915
         """Receive packet"""
 
         # If the A bit is set and no authentication is in use (bfd.AuthType
@@ -261,13 +354,9 @@ class Session:
         # Set bfd.RemoteMinRxInterval to the value of Required Min RX Interval.
         self.remote_min_rx_interval = packet.required_min_rx_interval
 
-        # In Asynchronous mode, the Detection Time calculated in the local
-        # system is equal to the value of Detect Mult received from the remote
-        # system, multiplied by the agreed transmit interval of the remote
-        # system (the greater of bfd.RequiredMinRxInterval and the last
-        # received Desired Min TX Interval).
-        self._async_detect_time = packet.detect_mult * \
-            max(self.required_min_rx_interval, packet.desired_min_tx_interval)
+        # Non-RFC defined session state that we track anyway
+        self.remote_detect_mult = packet.detect_mult
+        self.remote_min_tx_interval = packet.desired_min_tx_interval
 
         # Implmenetation of the FSM in section 6.8.6
         if self.state == STATE_ADMIN_DOWN:
@@ -287,13 +376,13 @@ class Session:
                               self.remote)
                 elif packet.state == STATE_INIT:
                     self.state = STATE_UP
-                    self.desired_min_tx_interval = self.rx_interval
+                    self.desired_min_tx_interval = self.tx_interval
                     log.error('BFD session with %s going to UP state.',
                               self.remote)
             elif self.state == STATE_INIT:
                 if packet.state in (STATE_INIT, STATE_UP):
                     self.state = STATE_UP
-                    self.desired_min_tx_interval = self.rx_interval
+                    self.desired_min_tx_interval = self.tx_interval
                     log.error('BFD session with %s going to UP state.',
                               self.remote)
             else:
@@ -323,6 +412,12 @@ class Session:
                          self._final_async_tx_interval)
                 self._async_tx_interval = self._final_async_tx_interval
                 self._final_async_tx_interval = None
+            if self._final_async_detect_time:
+                log.info('Increasing Detect Time from %d to %d now that Poll '
+                         'Sequence has ended.', self._async_detect_time,
+                         self._final_async_detect_time)
+                self._async_detect_time = self._final_async_detect_time
+                self._final_async_detect_time = None
 
         # Set the time a packet was received to right now
         self.last_rx_packet_time = time.time()
@@ -332,7 +427,7 @@ class Session:
     async def detect_async_failure(self):
         """Detect if a session has failed in asynchronous mode"""
         while True:
-            if not (self.demand_mode and self._async_detect_time):
+            if not (self.demand_mode or self._async_detect_time is None):
                 # If Demand mode is not active, and a period of time equal to
                 # the Detection Time passes without receiving a BFD Control
                 # packet from the remote system, and bfd.SessionState is Init
@@ -346,4 +441,8 @@ class Session:
                     self.desired_min_tx_interval = DESIRED_MIN_TX_INTERVAL
                     log.critical('Detected BFD remote %s going DOWN!',
                                  self.remote)
+                    log.info('Time since last packet: %d ms; '
+                             'Detect Time: %d ms',
+                             (time.time() - self.last_rx_packet_time) * 1000,
+                             self._async_detect_time/1000)
             await asyncio.sleep(1/1000)
