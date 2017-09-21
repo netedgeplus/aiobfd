@@ -1,5 +1,7 @@
 """aiobfd: BFD Session with an individual remote"""
 # pylint: disable=I0011,R0902,R0913
+# pylint: disable=I0011,E1101
+# socket.IPPROTO_IPV6 missing on Windows
 
 import asyncio
 import random
@@ -260,7 +262,7 @@ class Session:
             'demand_mode': demand,
             'multipoint': MULTIPOINT,
             'detect_mult': self.detect_mult,
-            'length': 24,  # TODO: revisit when implementing authentication
+            'length': 24,
             'my_discr': self.local_discr,
             'your_discr': self.remote_discr,
             'desired_min_tx_interval': self.desired_min_tx_interval,
@@ -346,9 +348,8 @@ class Session:
 
         # If the A bit is set authenticate the packet under the rules of
         # section 6.7.
-        # TODO: implement authentication
         if packet.authentication_present:
-            log.critical('Authenticated packet not supported!')
+            log.critical('Authenticated packet received, not supported!')
             return
 
         # Set bfd.RemoteDiscr to the value of My Discriminator.
