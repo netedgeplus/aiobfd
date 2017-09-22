@@ -62,9 +62,10 @@ class Packet:  # pylint: disable=I0011,R0903
         self.source = source
 
         packet = bitstring.BitString(data)
-
+        packet_length = packet.len / 8
         # Ensure packet is sufficiently long to attempt unpacking it
-        if packet.len < MIN_PACKET_SIZE:
+
+        if packet_length < MIN_PACKET_SIZE:
             raise IOError('Packet size below mininum correct value.')
 
         self.version, self.diag, self.state, self.poll, self.final, \
@@ -82,7 +83,7 @@ class Packet:  # pylint: disable=I0011,R0903
                   self.required_min_rx_interval,
                   self.required_min_echo_rx_interval)
 
-        self.validate(packet.len)
+        self.validate(packet_length)
 
     def validate(self, packet_length):
         """Validate received packet contents"""
