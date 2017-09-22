@@ -1,7 +1,6 @@
 """Test aiobfd/packet.py"""
 # pylint: disable=I0011,W0621
 
-from copy import copy
 import pytest
 import bitstring
 from aiobfd.packet import Packet, PACKET_FORMAT
@@ -52,81 +51,72 @@ def test_valid_packet(valid_data):
 
 def test_packet_too_short(valid_data):
     """Test whether version 0 raises an exception"""
-    data = copy(valid_data)
     with pytest.raises(IOError):
-        Packet(bitstring.pack(PACKET_FORMAT_TOO_SHORT, **data), '127.0.0.1')
+        Packet(bitstring.pack(PACKET_FORMAT_TOO_SHORT, **valid_data),
+               '127.0.0.1')
 
 
 def test_protocol_version_0(valid_data):
     """Test whether version 0 raises an exception"""
-    data = copy(valid_data)
-    data['version'] = 0
+    valid_data['version'] = 0
     with pytest.raises(IOError):
-        Packet(bitstring.pack(PACKET_FORMAT, **data), '127.0.0.1')
+        Packet(bitstring.pack(PACKET_FORMAT, **valid_data), '127.0.0.1')
 
 
 def test_protocol_version_2(valid_data):
     """Test whether version 2 raises an exception"""
-    data = copy(valid_data)
-    data['version'] = 2
+    valid_data['version'] = 2
     with pytest.raises(IOError):
-        Packet(bitstring.pack(PACKET_FORMAT, **data), '127.0.0.1')
+        Packet(bitstring.pack(PACKET_FORMAT, **valid_data), '127.0.0.1')
 
 
 def test_length_23(valid_data):
     """Test whether too short length raises an exception"""
-    data = copy(valid_data)
-    data['length'] = 23
+    valid_data['length'] = 23
     with pytest.raises(IOError):
-        Packet(bitstring.pack(PACKET_FORMAT, **data), '127.0.0.1')
+        Packet(bitstring.pack(PACKET_FORMAT, **valid_data), '127.0.0.1')
 
 
 def test_length_0(valid_data):
     """Test whether no length set raises an exception"""
-    data = copy(valid_data)
-    data['length'] = 0
+    valid_data['length'] = 0
     with pytest.raises(IOError):
-        Packet(bitstring.pack(PACKET_FORMAT, **data), '127.0.0.1')
+        Packet(bitstring.pack(PACKET_FORMAT, **valid_data), '127.0.0.1')
 
 
 def test_length_25(valid_data):
     """Test whether length beyond packet size raises exception"""
-    data = copy(valid_data)
-    data['length'] = 25
+    valid_data['length'] = 25
     with pytest.raises(IOError):
-        Packet(bitstring.pack(PACKET_FORMAT, **data), '127.0.0.1')
+        Packet(bitstring.pack(PACKET_FORMAT, **valid_data), '127.0.0.1')
 
 
 def test_multipoint(valid_data):
     """Test whether setting the multipoint bit raises an exception"""
-    data = copy(valid_data)
-    data['multipoint'] = 1
+    valid_data['multipoint'] = 1
     with pytest.raises(IOError):
-        Packet(bitstring.pack(PACKET_FORMAT, **data), '127.0.0.1')
+        Packet(bitstring.pack(PACKET_FORMAT, **valid_data), '127.0.0.1')
 
 
 def test_my_discr_0(valid_data):
     """Test whether leaving the my_discr empty raises an exception"""
-    data = copy(valid_data)
-    data['my_discr'] = 0
+    valid_data['my_discr'] = 0
     with pytest.raises(IOError):
-        Packet(bitstring.pack(PACKET_FORMAT, **data), '127.0.0.1')
+        Packet(bitstring.pack(PACKET_FORMAT, **valid_data), '127.0.0.1')
 
 
 def test_your_discr_0_when_up(valid_data):
     """Test whether your_disc being 0 when in up state raises an exception """
-    data = copy(valid_data)
-    data['state'] = 3
-    data['your_discr'] = 0
+    valid_data['state'] = 3
+    valid_data['your_discr'] = 0
     with pytest.raises(IOError):
-        Packet(bitstring.pack(PACKET_FORMAT, **data), '127.0.0.1')
+        Packet(bitstring.pack(PACKET_FORMAT, **valid_data), '127.0.0.1')
 
 
 def test_your_discr_0_when_init(valid_data):
     """Test whether your_disc being 0 when in init state raises an
        exception """
-    data = copy(valid_data)
-    data['state'] = 2
-    data['your_discr'] = 0
+    valid_data['state'] = 2
+    valid_data['your_discr'] = 0
     with pytest.raises(IOError):
-        Packet(bitstring.pack(PACKET_FORMAT, **data), '127.0.0.1')
+        Packet(bitstring.pack(PACKET_FORMAT, **valid_data), '127.0.0.1')
