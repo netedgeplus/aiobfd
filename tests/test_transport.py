@@ -41,9 +41,8 @@ def test_client_error_received(client, mocker):
         'Socket error received: %s', 'test error')
 
 
-def test_server_connection_made(server, mocker):
+def test_server_connection_made(server):
     """Test whether we can establish a server connections"""
-    mocker.patch(server.rx_queue)
     server.connection_made(None)
 
 

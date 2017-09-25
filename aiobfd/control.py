@@ -87,7 +87,7 @@ class Control:
         asyncio.ensure_future(self.rx_packets())
 
         try:
-            log.info('BFD Daemon fully configured.')
+            log.warn('BFD Daemon fully configured.')
             self.loop.run_forever()
         except KeyboardInterrupt:
             def shutdown_exception_handler(loop, context):
