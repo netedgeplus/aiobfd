@@ -368,7 +368,7 @@ class Session:
         self.remote_detect_mult = packet.detect_mult
         self.remote_min_tx_interval = packet.desired_min_tx_interval
 
-        # Implmenetation of the FSM in section 6.8.6
+        # Implementation of the FSM in section 6.8.6
         if self.state == STATE_ADMIN_DOWN:
             raise AttributeError('Received packet while in Admin Down state')
         if packet.state == STATE_ADMIN_DOWN:
