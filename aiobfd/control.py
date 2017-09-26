@@ -56,9 +56,6 @@ class Control:
         except IOError as exc:
             log.info('Dropping packet: %s', exc)
             return
-        except AttributeError:
-            log.info('Dropping packet while in Admin Down state.')
-            return
 
         # If the Your Discriminator field is nonzero, it MUST be used to select
         # the session with which this BFD packet is associated.  If no session
