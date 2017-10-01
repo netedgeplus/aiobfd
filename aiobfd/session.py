@@ -155,7 +155,7 @@ class Session:
                  'Poll Sequence.', self._required_min_rx_interval, value)
 
         detect_time = self.calc_detect_time(self.remote_detect_mult,
-                                            self.required_min_rx_interval,
+                                            value,
                                             self.remote_min_tx_interval)
         if value < self._required_min_rx_interval and self.state == STATE_UP:
             self._final_async_detect_time = detect_time
