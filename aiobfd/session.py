@@ -159,7 +159,7 @@ class Session:
                                             self.remote_min_tx_interval)
         if value < self._required_min_rx_interval and self.state == STATE_UP:
             self._final_async_detect_time = detect_time
-            log.info('Delaying increase in Detect Time from %d to %d ...',
+            log.info('Delaying decrease in Detect Time from %d to %d ...',
                      self._async_detect_time, self._final_async_detect_time)
         else:
             self._async_detect_time = detect_time
