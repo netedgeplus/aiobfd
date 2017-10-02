@@ -184,9 +184,10 @@ class Session:
         # We should cancel the tx_packets coro to do this.
         tx_interval = max(value, self.desired_min_tx_interval)
         if tx_interval < self._async_tx_interval:
-            log.info('Remote decreased the Tx Interval, forcing change '
-                     'by restarting the Tx Packets process.')
+            log.info('Remote triggered decrease in the Tx Interval, forcing '
+                     'change by restarting the Tx Packets process.')
             self._restart_tx_packets()
+        self._async_tx_interval = tx_interval
         self._remote_min_rx_interval = value
 
     @property
