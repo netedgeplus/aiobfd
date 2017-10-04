@@ -268,3 +268,124 @@ def test_sess_r_rx_int_set_diff3(session, mocker):
     assert session._restart_tx_packets.called
     assert session._remote_min_rx_interval == 900000
     assert session._async_tx_interval == 1000000
+
+
+def test_sess_r_tx_interval_get(session):
+    """Attempt to get the Remote Min Tx Interval"""
+    assert session._remote_min_tx_interval is None
+
+
+def test_sess_r_tx_int_set_same(session, mocker):
+    """Attempt to set the Remote Min Tx Interval to same value"""
+    session.remote_min_tx_interval = 1000000
+    mocker.patch('aiobfd.session.log')
+    session.remote_min_tx_interval = 1000000
+    aiobfd.session.log.info.assert_not_called()
+    assert session._remote_min_tx_interval == 1000000
+
+
+def test_sess_r_tx_int_set_diff1(session, mocker):
+    """Attempt to set the Remote Min Tx Interval to different value"""
+    mocker.patch('aiobfd.session.log')
+    session.remote_min_tx_interval = 1000000
+    aiobfd.session.log.info.assert_not_called()
+    assert session._remote_min_tx_interval == 1000000
+    assert session._async_detect_time is None
+
+
+def test_sess_r_tx_int_set_diff2(session, mocker):
+    """Attempt to set the Remote Min Tx Interval to different value"""
+    session.remote_detect_mult = 2
+    mocker.patch('aiobfd.session.log')
+    session.remote_min_tx_interval = 1000000
+    aiobfd.session.log.info.assert_not_called()
+    assert session._remote_min_tx_interval == 1000000
+    assert session._async_detect_time == 2000000
+
+
+def test_sess_r_detect_mult_get(session):
+    """Attempt to get the Remote Detect Multiplier"""
+    assert session._remote_detect_mult is None
+
+
+def test_sess_r_det_mult_set_same(session, mocker):
+    """Attempt to set the Remote Detect Multiplier to same value"""
+    session.remote_detect_mult = 2
+    mocker.patch('aiobfd.session.log')
+    session.remote_detect_mult = 2
+    aiobfd.session.log.info.assert_not_called()
+    assert session._remote_detect_mult == 2
+
+
+def test_sess_r_det_mult_set_same1(session, mocker):
+    """Attempt to set the Remote Detect Multiplier to different value"""
+    mocker.patch('aiobfd.session.log')
+    session.remote_detect_mult = 2
+    aiobfd.session.log.info.assert_not_called()
+    assert session._remote_detect_mult == 2
+    assert session._async_detect_time is None
+
+
+def test_sess_r_det_mult_set_same2(session, mocker):
+    """Attempt to set the Remote Detect Multiplier to different value"""
+    session.remote_min_tx_interval = 1000000
+    mocker.patch('aiobfd.session.log')
+    session.remote_detect_mult = 2
+    aiobfd.session.log.info.assert_not_called()
+    assert session._remote_detect_mult == 2
+    assert session._async_detect_time == 2000000
+
+
+def test_sess_detect_time_normal1(session, mocker):
+    """Calculate the detect time standard case"""
+    mocker.patch('aiobfd.session.log')
+    result = session.calc_detect_time(3, 100, 200)
+    assert result == 600
+    aiobfd.session.log.debug.assert_called_once_with(
+        'BFD Detection Time calculated using '
+        'detect_mult: %s rx_interval: %s tx_interval: %s',
+        3, 100, 200)
+
+
+def test_sess_detect_time_normal2(session, mocker):
+    """Calculate the detect time standard case"""
+    mocker.patch('aiobfd.session.log')
+    result = session.calc_detect_time(3, 200, 100)
+    assert result == 600
+    aiobfd.session.log.debug.assert_called_once_with(
+        'BFD Detection Time calculated using '
+        'detect_mult: %s rx_interval: %s tx_interval: %s',
+        3, 200, 100)
+
+
+def test_sess_detect_time_none1(session, mocker):
+    """Calculate the detect time standard case"""
+    mocker.patch('aiobfd.session.log')
+    result = session.calc_detect_time(None, 100, 200)
+    assert result is None
+    aiobfd.session.log.debug.assert_called_once_with(
+        'BFD Detection Time calculation not possible with '
+        'values detect_mult: %s rx_interval: %s tx_interval: %s',
+        None, 100, 200)
+
+
+def test_sess_detect_time_none2(session, mocker):
+    """Calculate the detect time standard case"""
+    mocker.patch('aiobfd.session.log')
+    result = session.calc_detect_time(3, None, 200)
+    assert result is None
+    aiobfd.session.log.debug.assert_called_once_with(
+        'BFD Detection Time calculation not possible with '
+        'values detect_mult: %s rx_interval: %s tx_interval: %s',
+        3, None, 200)
+
+
+def test_sess_detect_time_none3(session, mocker):
+    """Calculate the detect time standard case"""
+    mocker.patch('aiobfd.session.log')
+    result = session.calc_detect_time(3, 100, None)
+    assert result is None
+    aiobfd.session.log.debug.assert_called_once_with(
+        'BFD Detection Time calculation not possible with '
+        'values detect_mult: %s rx_interval: %s tx_interval: %s',
+        3, 100, None)
