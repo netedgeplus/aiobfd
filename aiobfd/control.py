@@ -16,8 +16,9 @@ class Control:
     """BFD Control"""
 
     def __init__(self, local, remotes, family=socket.AF_UNSPEC, passive=False,
-                 tx_interval=1000000, rx_interval=1000000, detect_mult=3):
-        self.loop = asyncio.get_event_loop()
+                 tx_interval=1000000, rx_interval=1000000, detect_mult=3,
+                 loop=asyncio.get_event_loop()):
+        self.loop = loop
         self.rx_queue = asyncio.Queue()
 
         # Initialize client sessions
