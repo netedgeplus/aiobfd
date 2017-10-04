@@ -9,6 +9,12 @@ import pytest
 import aiobfd.session
 
 
+class AsyncMock(MagicMock):
+    """Make MagicMock Async"""
+    async def __call__(self, *args, **kwargs):
+        return super(AsyncMock, self).__call__(*args, **kwargs)
+
+
 @pytest.fixture()
 def session():
     """Create a basic aiobfd session"""
@@ -18,6 +24,8 @@ def session():
 def test_session_ipv4(mocker):
     """Create a basic IPv4 Session process"""
     mocker.patch('aiobfd.session.log')
+    mocker.patch.object(aiobfd.session.Session, 'async_tx_packets',
+                        new_callable=AsyncMock)
     session = aiobfd.session.Session('127.0.0.1', '127.0.0.1')
     aiobfd.session.log.debug.assert_called_once_with(
         'Setting up UDP client for %s:%s.', '127.0.0.1',
@@ -36,6 +44,8 @@ def test_session_ipv4(mocker):
 def test_session_ipv6(mocker):
     """Create a basic IPv6 Session process"""
     mocker.patch('aiobfd.session.log')
+    mocker.patch.object(aiobfd.session.Session, 'async_tx_packets',
+                        new_callable=AsyncMock)
     session = aiobfd.session.Session('::1', '::1')
     aiobfd.session.log.debug.assert_called_once_with(
         'Setting up UDP client for %s:%s.', '::1',
@@ -52,6 +62,8 @@ def test_session_ipv6(mocker):
 def test_session_hostname(mocker):
     """Create a basic IPv4 Session process from hostname"""
     mocker.patch('aiobfd.session.log')
+    mocker.patch.object(aiobfd.session.Session, 'async_tx_packets',
+                        new_callable=AsyncMock)
     session = aiobfd.session.Session('localhost', 'localhost')
     aiobfd.session.log.debug.assert_called_once_with(
         'Setting up UDP client for %s:%s.', 'localhost',
@@ -68,6 +80,8 @@ def test_session_hostname(mocker):
 def test_session_host_force_ipv4(mocker):
     """Create a forced IPv4 Session process from hostname"""
     mocker.patch('aiobfd.session.log')
+    mocker.patch.object(aiobfd.session.Session, 'async_tx_packets',
+                        new_callable=AsyncMock)
     session = aiobfd.session.Session('localhost', 'localhost',
                                      family=socket.AF_INET)
     aiobfd.session.log.debug.assert_called_once_with(
@@ -87,6 +101,8 @@ def test_session_host_force_ipv4(mocker):
 def test_session_host_force_ipv6(mocker):
     """Create a forced IPv6 Session process from hostname"""
     mocker.patch('aiobfd.session.log')
+    mocker.patch.object(aiobfd.session.Session, 'async_tx_packets',
+                        new_callable=AsyncMock)
     session = aiobfd.session.Session('localhost', 'localhost',
                                      family=socket.AF_INET6)
     aiobfd.session.log.debug.assert_called_once_with(
