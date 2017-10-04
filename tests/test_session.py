@@ -4,6 +4,7 @@
 import asyncio
 import platform
 import socket
+from unittest.mock import MagicMock
 import pytest
 import aiobfd.session
 
@@ -196,4 +197,58 @@ def test_sess_rx_interval_set_more(session, mocker):
     assert session._required_min_rx_interval == 1000000 + 1
     assert session.poll_sequence
 
-# TODO: line 175 & onwards
+
+def test_sess_r_rx_interval_get(session):
+    """Attempt to get the Remote Min Rx Interval"""
+    assert session._remote_min_rx_interval == 1
+
+
+def test_sess_r_rx_int_set_same(session, mocker):
+    """Attempt to set the Remote Min Rx Interval to same value"""
+    mocker.patch('aiobfd.session.log')
+    session.remote_min_rx_interval = 1
+    aiobfd.session.log.info.assert_not_called()
+
+
+def test_sess_r_rx_int_set_diff(session, mocker):
+    """Attempt to set the Remote Min Rx Interval to different value"""
+    mocker.patch('aiobfd.session.log')
+    session.remote_min_rx_interval = 1000000
+    aiobfd.session.log.info.assert_not_called()
+    assert session._remote_min_rx_interval == 1000000
+
+
+def test_sess_r_rx_int_set_diff1(session, mocker):
+    """Attempt to set the Remote Min Rx Interval to different value
+       but lower than our DESIRED_MIN_TX_INTERVAL"""
+    mocker.patch('aiobfd.session.log')
+    session.remote_min_rx_interval = 900000
+    aiobfd.session.log.info.assert_not_called()
+    assert session._remote_min_rx_interval == 900000
+    assert session._async_tx_interval == 1000000
+
+
+def test_sess_r_rx_int_set_diff2(session, mocker):
+    """Attempt to set the Remote Min Rx Interval to different value
+       but higher than our DESIRED_MIN_TX_INTERVAL"""
+    mocker.patch('aiobfd.session.log')
+    session.remote_min_rx_interval = 1100000
+    aiobfd.session.log.info.assert_not_called()
+    assert session._remote_min_rx_interval == 1100000
+    assert session._async_tx_interval == 1100000
+
+
+def test_sess_r_rx_int_set_diff3(session, mocker):
+    """Attempt to set the Remote Min Rx Interval to different value
+       such that the Tx Interval decreases"""
+
+    session.remote_min_rx_interval = 1500000
+    mocker.patch('aiobfd.session.log')
+    session._restart_tx_packets = MagicMock()
+    session.remote_min_rx_interval = 900000
+    aiobfd.session.log.info.assert_called_once_with(
+        'Remote triggered decrease in the Tx Interval, forcing '
+        'change by restarting the Tx Packets process.')
+    assert session._restart_tx_packets.called
+    assert session._remote_min_rx_interval == 900000
+    assert session._async_tx_interval == 1000000
