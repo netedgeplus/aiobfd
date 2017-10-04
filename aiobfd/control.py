@@ -47,10 +47,10 @@ class Control:
         while True:
             packet, source = await self.rx_queue.get()
             log.debug('Received a new packet from %s.', source)
-            asyncio.ensure_future(self.process_packet(packet, source))
+            self.process_packet(packet, source)
             self.rx_queue.task_done()
 
-    async def process_packet(self, data, source):
+    def process_packet(self, data, source):
         """Process a received packet"""
         try:
             packet = Packet(data, source)
