@@ -32,11 +32,11 @@ class Control:
 
         # Initialize server
         log.debug('Setting up UDP server on %s:%s.', local, CONTROL_PORT)
-        future = self.loop.create_datagram_endpoint(
+        task = self.loop.create_datagram_endpoint(
             lambda: Server(self.rx_queue),
             local_addr=(local, CONTROL_PORT),
             family=family)
-        self.server, _ = self.loop.run_until_complete(future)
+        self.server, _ = self.loop.run_until_complete(task)
         log.info('Accepting traffic on %s:%s.',
                  self.server.get_extra_info('sockname')[0],
                  self.server.get_extra_info('sockname')[1])

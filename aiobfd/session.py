@@ -100,8 +100,8 @@ class Session:
             # https://bugs.python.org/issue29515
             sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_UNICAST_HOPS, 255)
         sock.bind(addr)
-        future = self.loop.create_datagram_endpoint(Client, sock=sock)
-        self.client, _ = self.loop.run_until_complete(future)
+        task = self.loop.create_datagram_endpoint(Client, sock=sock)
+        self.client, _ = self.loop.run_until_complete(task)
         log.info('Sourcing traffic for %s:%s from %s:%s.',
                  remote, CONTROL_PORT,
                  self.client.get_extra_info('sockname')[0],
