@@ -4,7 +4,6 @@
 import platform
 import socket
 from unittest.mock import MagicMock
-import asyncio
 import pytest
 import bitstring
 import aiobfd.control
@@ -24,6 +23,19 @@ class ErrorAfter(object):  # pylint: disable=I0011,R0903
         self.calls += 1
         if self.calls > self.limit:
             raise CallableExhausted
+
+
+class InterruptAfter(object):  # pylint: disable=I0011,R0903
+    """ Callable that will raise `KeyboardInterrupt`
+    exception after `limit` calls """
+    def __init__(self, limit):
+        self.limit = limit
+        self.calls = 0
+
+    def __call__(self, *args, **kwargs):
+        self.calls += 1
+        if self.calls > self.limit:
+            raise KeyboardInterrupt
 
 
 class CallableExhausted(Exception):
@@ -113,10 +125,7 @@ def test_process_invalid_packet(control, valid_data, mocker):  # noqa: F811
     control.process_packet(packet, '172.0.0.1')
     aiobfd.control.log.info.assert_called_once_with(
         'Dropping packet: %s', mocker.ANY)
-    try:
-        control.sessions[0]._tx_packets.cancel()  # pylint: disable=I0011,W0212
-    except asyncio.CancelledError:
-        pass
+    control.sessions[0]._tx_packets.cancel()  # pylint: disable=I0011,W0212
 
 
 def test_process_pkt_unknown_remote(control, valid_data, mocker):  # noqa: F811
@@ -127,10 +136,7 @@ def test_process_pkt_unknown_remote(control, valid_data, mocker):  # noqa: F811
     aiobfd.control.log.info.assert_called_once_with(
         'Dropping packet from %s as it doesn\'t match any configured remote.',
         '127.0.0.2')
-    try:
-        control.sessions[0]._tx_packets.cancel()  # pylint: disable=I0011,W0212
-    except asyncio.CancelledError:
-        pass
+    control.sessions[0]._tx_packets.cancel()  # pylint: disable=I0011,W0212
 
 
 def test_valid_remote_your_discr_0(control, valid_data, mocker):  # noqa: F811
@@ -141,10 +147,7 @@ def test_valid_remote_your_discr_0(control, valid_data, mocker):  # noqa: F811
     aiobfd.control.log.info.assert_not_called()
     aiobfd.control.log.warning.assert_not_called()
     aiobfd.control.log.debug.assert_not_called()
-    try:
-        control.sessions[0]._tx_packets.cancel()  # pylint: disable=I0011,W0212
-    except asyncio.CancelledError:
-        pass
+    control.sessions[0]._tx_packets.cancel()  # pylint: disable=I0011,W0212
 
 
 def test_valid_remote_your_discr_1(control, valid_data, mocker):  # noqa: F811
@@ -156,10 +159,7 @@ def test_valid_remote_your_discr_1(control, valid_data, mocker):  # noqa: F811
     aiobfd.control.log.info.assert_not_called()
     aiobfd.control.log.warning.assert_not_called()
     aiobfd.control.log.debug.assert_not_called()
-    try:
-        control.sessions[0]._tx_packets.cancel()  # pylint: disable=I0011,W0212
-    except asyncio.CancelledError:
-        pass
+    control.sessions[0]._tx_packets.cancel()  # pylint: disable=I0011,W0212
 
 
 @pytest.mark.asyncio  # noqa: F811
@@ -170,3 +170,16 @@ async def test_rx_packets(control, valid_data):
     await control.rx_queue.put((valid_data, '127.0.0.1'))
     with pytest.raises(CallableExhausted):
         await control.rx_packets()
+
+
+def test_run(control, mocker):  # noqa: F811
+    """Run the control loop"""
+    mocker.patch('aiobfd.control.log')
+    mocker.patch.object(control.loop, 'run_forever')
+    control.loop.run_forever.side_effect = InterruptAfter(0)
+    control.run()
+    aiobfd.control.log.warning.assert_called_once_with(
+        'BFD Daemon fully configured.')
+    aiobfd.control.log.info.assert_called_once_with(
+        'Keyboard interrupt detected.')
+    control.sessions[0]._tx_packets.cancel()  # pylint: disable=I0011,W0212

@@ -88,7 +88,7 @@ class Control:
             log.warning('BFD Daemon fully configured.')
             self.loop.run_forever()
         except KeyboardInterrupt:
-            def shutdown_exception_handler(loop, context):
+            def shutdown_exception_handler(loop, context):  # pragma: no cover
                 """Do not show `asyncio.CancelledError` exceptions"""
                 if "exception" not in context or not \
                    isinstance(context["exception"], asyncio.CancelledError):
@@ -105,6 +105,6 @@ class Control:
             # Keep the event loop running until it is either destroyed or all
             # tasks have really terminated
             while not tasks.done() and not self.loop.is_closed():
-                self.loop.run_forever()
+                self.loop.run_forever()  # pragma: no cover
         finally:
             self.loop.close()
