@@ -4,6 +4,7 @@
 import asyncio
 import platform
 import socket
+import time
 from unittest.mock import MagicMock
 import pytest
 import aiobfd.session
@@ -13,6 +14,24 @@ class AsyncMock(MagicMock):
     """Make MagicMock Async"""
     async def __call__(self, *args, **kwargs):
         return super(AsyncMock, self).__call__(*args, **kwargs)
+
+
+class ErrorAfter(object):  # pylint: disable=I0011,R0903
+    """ Callable that will raise `CallableExhausted`
+    exception after `limit` calls """
+    def __init__(self, limit):
+        self.limit = limit
+        self.calls = 0
+
+    def __call__(self, *args, **kwargs):
+        self.calls += 1
+        if self.calls > self.limit:
+            raise CallableExhausted
+
+
+class CallableExhausted(Exception):
+    """Exception that gets raised after `limit` calls"""
+    pass
 
 
 @pytest.fixture()
@@ -389,3 +408,166 @@ def test_sess_detect_time_none3(session, mocker):
         'BFD Detection Time calculation not possible with '
         'values detect_mult: %s rx_interval: %s tx_interval: %s',
         3, 100, None)
+
+# TODO: test encode_packet
+# TODO: test async_tx_packets
+# TODO: test tx_packet
+
+
+def test_restart_tx_packets(session, mocker):
+    """Test the restart_tx_packet() procedure"""
+    mocker.patch('aiobfd.session.log')
+
+    session._restart_tx_packets()
+    aiobfd.session.log.info.assert_has_calls(
+        [mocker.call('Attempting to cancel tx_packets() ...'),
+         mocker.call('Restarting tx_packets()  ...')])
+
+
+@pytest.mark.asyncio  # noqa: F811
+async def test_detect_down(session, mocker):
+    """Test the detection logic, really down"""
+    session.required_min_rx_interval = 4000
+    session.remote_detect_mult = 3
+    session.remote_min_tx_interval = 2000
+    session.last_rx_packet_time = time.time()
+    session.state = aiobfd.session.STATE_UP
+    await asyncio.sleep(((3 * 4000) + 1000)/1000000)
+    mocker.patch.object(asyncio, 'sleep',
+                        new_callable=AsyncMock)
+    asyncio.sleep.side_effect = ErrorAfter(1)
+    mocker.patch('aiobfd.session.log')
+    with pytest.raises(CallableExhausted):
+        await session.detect_async_failure()
+    assert session.state == aiobfd.session.STATE_DOWN
+    assert session.local_diag == aiobfd.session.DIAG_CONTROL_DETECTION_EXPIRED
+    assert session.desired_min_tx_interval == \
+        aiobfd.session.DESIRED_MIN_TX_INTERVAL
+    aiobfd.session.log.critical.assert_called_once_with(
+        'Detected BFD remote %s going DOWN!', '127.0.0.1')
+    aiobfd.session.log.info.assert_called_once_with(
+        'Time since last packet: %d ms; Detect Time: %d ms',
+        mocker.ANY, ((3 * 4000))/1000)
+
+
+@pytest.mark.asyncio  # noqa: F811
+async def test_detect_up(session, mocker):
+    """Test the detection logic, still up"""
+    session.required_min_rx_interval = 4000
+    session.remote_detect_mult = 3
+    session.remote_min_tx_interval = 2000
+    session.last_rx_packet_time = time.time()
+    session.state = aiobfd.session.STATE_UP
+    await asyncio.sleep(((4000))/1000000)
+    mocker.patch.object(asyncio, 'sleep',
+                        new_callable=AsyncMock)
+    asyncio.sleep.side_effect = ErrorAfter(1)
+    mocker.patch('aiobfd.session.log')
+    with pytest.raises(CallableExhausted):
+        await session.detect_async_failure()
+    aiobfd.session.log.critical.assert_not_called()
+    aiobfd.session.log.info.assert_not_called()
+
+
+@pytest.mark.asyncio  # noqa: F811
+async def test_detect_demand_mode(session, mocker):
+    """Test the detection logic, in demand mode"""
+    session.required_min_rx_interval = 4000
+    session.remote_detect_mult = 3
+    session.remote_min_tx_interval = 2000
+    session.last_rx_packet_time = time.time()
+    session.state = aiobfd.session.STATE_UP
+    session.demand_mode = True
+    await asyncio.sleep(((3 * 4000) + 1000)/1000000)
+    mocker.patch.object(asyncio, 'sleep',
+                        new_callable=AsyncMock)
+    asyncio.sleep.side_effect = ErrorAfter(1)
+    mocker.patch('aiobfd.session.log')
+    with pytest.raises(CallableExhausted):
+        await session.detect_async_failure()
+    aiobfd.session.log.critical.assert_not_called()
+    aiobfd.session.log.info.assert_not_called()
+
+
+@pytest.mark.asyncio  # noqa: F811
+async def test_detect_no_detect_time(session, mocker):
+    """Test the detection logic, no detect_time set"""
+    session.required_min_rx_interval = 4000
+    session.remote_detect_mult = 3
+    session.remote_min_tx_interval = 2000
+    session.last_rx_packet_time = time.time()
+    session.state = aiobfd.session.STATE_UP
+    session._async_detect_time = None
+    await asyncio.sleep(((3 * 4000) + 1000)/1000000)
+    mocker.patch.object(asyncio, 'sleep',
+                        new_callable=AsyncMock)
+    asyncio.sleep.side_effect = ErrorAfter(1)
+    mocker.patch('aiobfd.session.log')
+    with pytest.raises(CallableExhausted):
+        await session.detect_async_failure()
+    aiobfd.session.log.critical.assert_not_called()
+    aiobfd.session.log.info.assert_not_called()
+
+
+@pytest.mark.asyncio  # noqa: F811
+async def test_detect_state_init(session, mocker):
+    """Test the detection logic, in init state"""
+    session.required_min_rx_interval = 4000
+    session.remote_detect_mult = 3
+    session.remote_min_tx_interval = 2000
+    session.last_rx_packet_time = time.time()
+    session.state = aiobfd.session.STATE_INIT
+    await asyncio.sleep(((3 * 4000) + 1000)/1000000)
+    mocker.patch.object(asyncio, 'sleep',
+                        new_callable=AsyncMock)
+    asyncio.sleep.side_effect = ErrorAfter(1)
+    mocker.patch('aiobfd.session.log')
+    with pytest.raises(CallableExhausted):
+        await session.detect_async_failure()
+    assert session.state == aiobfd.session.STATE_DOWN
+    assert session.local_diag == aiobfd.session.DIAG_CONTROL_DETECTION_EXPIRED
+    assert session.desired_min_tx_interval == \
+        aiobfd.session.DESIRED_MIN_TX_INTERVAL
+    aiobfd.session.log.critical.assert_called_once_with(
+        'Detected BFD remote %s going DOWN!', '127.0.0.1')
+    aiobfd.session.log.info.assert_called_once_with(
+        'Time since last packet: %d ms; Detect Time: %d ms',
+        mocker.ANY, ((3 * 4000))/1000)
+
+
+@pytest.mark.asyncio  # noqa: F811
+async def test_detect_state_admin_down(session, mocker):
+    """Test the detection logic, in admin down state"""
+    session.required_min_rx_interval = 4000
+    session.remote_detect_mult = 3
+    session.remote_min_tx_interval = 2000
+    session.last_rx_packet_time = time.time()
+    session.state = aiobfd.session.STATE_ADMIN_DOWN
+    await asyncio.sleep(((3 * 4000) + 1000)/1000000)
+    mocker.patch.object(asyncio, 'sleep',
+                        new_callable=AsyncMock)
+    asyncio.sleep.side_effect = ErrorAfter(1)
+    mocker.patch('aiobfd.session.log')
+    with pytest.raises(CallableExhausted):
+        await session.detect_async_failure()
+    aiobfd.session.log.critical.assert_not_called()
+    aiobfd.session.log.info.assert_not_called()
+
+
+@pytest.mark.asyncio  # noqa: F811
+async def test_detect_state_down(session, mocker):
+    """Test the detection logic, in down state"""
+    session.required_min_rx_interval = 4000
+    session.remote_detect_mult = 3
+    session.remote_min_tx_interval = 2000
+    session.last_rx_packet_time = time.time()
+    session.state = aiobfd.session.STATE_DOWN
+    await asyncio.sleep(((3 * 4000) + 1000)/1000000)
+    mocker.patch.object(asyncio, 'sleep',
+                        new_callable=AsyncMock)
+    asyncio.sleep.side_effect = ErrorAfter(1)
+    mocker.patch('aiobfd.session.log')
+    with pytest.raises(CallableExhausted):
+        await session.detect_async_failure()
+    aiobfd.session.log.critical.assert_not_called()
+    aiobfd.session.log.info.assert_not_called()
