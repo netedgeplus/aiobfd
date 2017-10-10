@@ -321,7 +321,7 @@ class Session:
                     interval = \
                         self._async_tx_interval * (1 - random.uniform(0, 0.25))
                 await asyncio.sleep(interval/1000000)
-        except asyncio.CancelledError:
+        except asyncio.CancelledError:  # pragma: no cover
             log.info('tx_packets() was cancelled ...')
 
     def _restart_tx_packets(self):
