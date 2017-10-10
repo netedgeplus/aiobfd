@@ -281,11 +281,10 @@ class Session:
 
     def tx_packet(self, final=False):
         """Transmit a single BFD packet to the remote peer"""
-        log.debug('Sending a packet to %s:%s', self.remote, CONTROL_PORT)
+        log.debug('Transmitting BFD packet to %s:%s',
+                  self.remote, CONTROL_PORT)
         self.client.sendto(
             self.encode_packet(final), (self.remote, CONTROL_PORT))
-        log.debug('Transmitting BFD packet to %s:%s.',
-                  self.remote, CONTROL_PORT)
 
     async def async_tx_packets(self):
         """Asynchronously transmit control packet"""
