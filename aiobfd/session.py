@@ -289,47 +289,48 @@ class Session:
 
     async def async_tx_packets(self):
         """Asynchronously transmit control packet"""
-        while True:
-            # A system MUST NOT transmit BFD Control packets if bfd.RemoteDiscr
-            # is zero and the system is taking the Passive role.
-            # A system MUST NOT periodically transmit BFD Control packets if
-            # bfd.RemoteMinRxInterval is zero.
-            # A system MUST NOT periodically transmit BFD Control packets if
-            # Demand mode is active on the remote system (bfd.RemoteDemandMode
-            # is 1, bfd.SessionState is Up, and bfd.RemoteSessionState is Up)
-            # and a Poll Sequence is not being transmitted.
-            if not((self.remote_discr == 0 and self.passive) or
-                   (self.remote_min_rx_interval == 0) or
-                   (not self.poll_sequence and
-                    (self.remote_demand_mode == 1 and
-                     self.state == STATE_UP and
-                     self.remote_state == STATE_UP))):
-                self.tx_packet()
+        try:
+            while True:
+                # A system MUST NOT transmit BFD Control packets if
+                # bfd.RemoteDiscr is zero and the system is taking the Passive
+                # role. A system MUST NOT periodically transmit BFD Control
+                # packets if bfd.RemoteMinRxInterval is zero.
+                # A system MUST NOT periodically transmit BFD Control packets
+                # if Demand mode is active on the remote system
+                # (bfd.RemoteDemandMode) is 1, bfd.SessionState is Up, and
+                # bfd.RemoteSessionState is Up) and a Poll Sequence is not
+                # being transmitted.
+                if not((self.remote_discr == 0 and self.passive) or
+                       (self.remote_min_rx_interval == 0) or
+                       (not self.poll_sequence and
+                        (self.remote_demand_mode == 1 and
+                         self.state == STATE_UP and
+                         self.remote_state == STATE_UP))):
+                    self.tx_packet()
 
-            # The periodic transmission of BFD Control packets MUST be jittered
-            # on a per-packet basis by up to 25%
-            # If bfd.DetectMult is equal to 1, the interval between transmitted
-            # BFD Control packets MUST be no more than 90% of the negotiated
-            # transmission interval, and MUST be no less than 75% of the
-            # negotiated transmission interval.
-            if self.detect_mult == 1:
-                interval = self._async_tx_interval * random.uniform(0.75, 0.90)
-            else:
-                interval = self._async_tx_interval * (1 -
-                                                      random.uniform(0, 0.25))
-            await asyncio.sleep(interval/1000000)
+                # The periodic transmission of BFD Control packets MUST be
+                # jittered on a per-packet basis by up to 25%
+                # If bfd.DetectMult is equal to 1, the interval between
+                # transmitted BFD Control packets MUST be no more than 90% of
+                # the negotiated transmission interval, and MUST be no less
+                # than 75% of the negotiated transmission interval.
+                if self.detect_mult == 1:
+                    interval = \
+                        self._async_tx_interval * random.uniform(0.75, 0.90)
+                else:
+                    interval = \
+                        self._async_tx_interval * (1 - random.uniform(0, 0.25))
+                await asyncio.sleep(interval/1000000)
+        except asyncio.CancelledError:
+            log.info('tx_packets() was cancelled ...')
 
     def _restart_tx_packets(self):
         """Allow other co-routines to request a restart of tx_packets()
            when needed, i.e. due to a timer change"""
 
-        try:
-            log.info('Attempting to cancel tx_packets() ...')
-            self._tx_packets.cancel()
-        except asyncio.CancelledError:
-            pass
-
-        log.info('tx_packets() cancelled, restarting ...')
+        log.info('Attempting to cancel tx_packets() ...')
+        self._tx_packets.cancel()
+        log.info('Restarting tx_packets()  ...')
         self._tx_packets = asyncio.ensure_future(self.async_tx_packets())
 
     def rx_packet(self, packet):  # pylint: disable=I0011,R0912,R0915
