@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 """aiobfd: Asynchronous BFD Daemon"""
 
 import argparse
@@ -42,7 +40,7 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def run():
+def main():
     """Run aiobfd"""
     args = parse_arguments()
     logging.basicConfig(stream=sys.stdout, level=args.loglevel,
@@ -56,4 +54,4 @@ def run():
     control.run()
 
 if __name__ == '__main__':
-    run()
+    main()
