@@ -28,4 +28,4 @@ setup(name='aiobfd',
       tests_require=['pytest', 'pytest-asyncio', 'pytest-cov', 'pytest-mock',
                      'coverage'],
       python_requires='>=3.5, <4',
-      entry_points={'console_scripts': ['aiobfd.__main__:main']})
+      entry_points={'console_scripts': ['aiobfd=aiobfd.__main__:main']})
