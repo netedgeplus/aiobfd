@@ -3,8 +3,11 @@
 import argparse
 import socket
 import logging
+import logging.handlers
 import sys
 import aiobfd
+
+_LOG_LEVELS = ['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']
 
 
 def parse_arguments():
@@ -30,22 +33,37 @@ def parse_arguments():
                         help='Detection multiplier')
     parser.add_argument('-p', '--passive', action='store_true',
                         help='Take a passive role in session initialization')
-    log_group = parser.add_mutually_exclusive_group()
-    log_group.add_argument('-v', '--verbose', action='store_const',
-                           dest='loglevel', default=logging.WARNING,
-                           const=logging.INFO, help='Verbose logging')
-    log_group.add_argument('-d', '--debug', action='store_const',
-                           dest='loglevel', default=logging.WARNING,
-                           const=logging.DEBUG, help='Debugging logging')
+    parser.add_argument('-l', '--log-level', default='WARNING',
+                        help='Logging level', choices=_LOG_LEVELS)
+    parser.add_argument('-o', '--no-log-to-stdout', action='store_true',
+                        help='Disable logging to stdout; will be ignored if no'
+                             ' other logging is selected.')
+    parser.add_argument('-f', '--log-to-file', action='store_true',
+                        help='Enable logging to a file on the filesystem')
+    parser.add_argument('-n', '--log-file', default='/var/log/aiobfd.log',
+                        help='Path on filesystem to log to, if enabled')
+    parser.add_argument('-s', '--log-to-syslog', action='store_true',
+                        help='Enable logging to a syslog handler')
+    parser.add_argument('-y', '--log-sock', default='/dev/log',
+                        help='Syslog socket to log to, if enabled')
     return parser.parse_args()
 
 
 def main():
     """Run aiobfd"""
     args = parse_arguments()
-    logging.basicConfig(stream=sys.stdout, level=args.loglevel,
-                        format='%(asctime)s %(name)-12s '
-                               '%(levelname)-8s %(message)s')
+    handlers = []
+
+    if (args.log_to_file or args.log_to_syslog) and not args.no_log_to_stdout:
+        handlers.append(logging.StreamHandler(sys.stdout))
+    if args.log_to_file:
+        handlers.append(logging.handlers.WatchedFileHandler(args.log_file))
+    if args.log_to_syslog:
+        handlers.append(logging.handlers.SysLogHandler(args.log_sock))
+
+    log_format = '%(asctime)s %(name)-12s %(levelname)-8s %(message)s'
+    logging.basicConfig(handlers=handlers, format=log_format,
+                        level=logging.getLevelName(args.log_level))
     control = aiobfd.Control(args.local, [args.remote], family=args.family,
                              passive=args.passive,
                              rx_interval=args.rx_interval*1000,
