@@ -6,7 +6,7 @@ from distutils.core import setup
 from setuptools import find_packages
 
 setup(name='aiobfd',
-      version='0.1',
+      version='0.2',
       description='Asynchronous BFD Daemon',
       author='Kris Lambrechts',
       author_email='kris@netedge.plus',
